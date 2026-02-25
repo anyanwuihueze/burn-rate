@@ -1,4 +1,3 @@
-
 import { createBrowserClient } from '@supabase/ssr'
 
 export function createClient() {
@@ -6,11 +5,12 @@ export function createClient() {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
   if (!supabaseUrl || !supabaseKey) {
-    console.warn('Supabase credentials missing in environment variables.');
+    // We log this to the console so the developer can see it in browser tools
+    console.error('Supabase credentials missing. Please check your .env file for NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.');
   }
 
   return createBrowserClient(
-    supabaseUrl || '',
-    supabaseKey || ''
+    supabaseUrl || 'https://placeholder.supabase.co',
+    supabaseKey || 'placeholder-key'
   )
 }
