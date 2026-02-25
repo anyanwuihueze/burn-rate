@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { BurnGauge } from '@/components/dashboard/BurnGauge';
 import { StatsCard } from '@/components/dashboard/StatsCard';
@@ -10,22 +10,14 @@ import { KeyVault } from '@/components/vault/KeyVault';
 import { AlertBanner } from '@/components/dashboard/AlertBanner';
 import { 
   Zap, Flame, Calendar, Cpu, Activity, LayoutDashboard, 
-  Settings, Database, ArrowUpRight, LogOut, Loader2, AlertTriangle, ShieldAlert 
+  Settings, Database, ArrowUpRight, LogOut, Loader2, AlertTriangle, ShieldAlert,
+  Terminal, ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { UsageLog, APIKey, User } from '@/types/supabase';
-
-// Anomaly detection types
-interface AnomalyAlert {
-  id: string;
-  type: 'spike' | 'leak_suspected' | 'unusual_pattern';
-  severity: 'critical' | 'warning';
-  message: string;
-  detectedAt: string;
-  recommendedAction: string;
-}
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function BurnRateDashboard() {
   const [user, setUser] = useState<User | null>(null);
@@ -35,7 +27,6 @@ export default function BurnRateDashboard() {
   const [spent, setSpent] = useState(0);
   const [percentage, setPercentage] = useState(0);
   const [session, setSession] = useState<any>(null);
-  const [anomalies, setAnomalies] = useState<AnomalyAlert[]>([]);
   const [showKillSwitch, setShowKillSwitch] = useState(false);
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
   const [revoking, setRevoking] = useState(false);
@@ -44,30 +35,28 @@ export default function BurnRateDashboard() {
   const supabase = createClient();
 
   useEffect(() => {
-    const getSession = async () => {
-      try {
-        if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-          setSetupError('Supabase environment variables are missing. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env file.');
-          setLoading(false);
-          return;
-        }
+    const checkConfig = async () => {
+      const hasUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
+      if (!hasUrl || !hasKey) {
+        setSetupError('Missing Supabase credentials');
+        setLoading(false);
+        return;
+      }
+
+      try {
         const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error('Session error:', error);
-          setSetupError('Authentication service error: ' + error.message);
-          setLoading(false);
-          return;
-        }
+        if (error) throw error;
         setSession(session);
-        if (!session) setLoading(false);
       } catch (err: any) {
-        console.error('Supabase initialization failed:', err);
-        setSetupError('Application failed to connect to Supabase: ' + (err.message || 'Unknown error'));
+        console.error('Auth error:', err);
+      } finally {
         setLoading(false);
       }
     };
-    getSession();
+
+    checkConfig();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
@@ -79,9 +68,6 @@ export default function BurnRateDashboard() {
   useEffect(() => {
     if (session?.user) {
       fetchData();
-      setupRealtime();
-    } else if (!loading) {
-      setLoading(false);
     }
   }, [session]);
 
@@ -95,114 +81,70 @@ export default function BurnRateDashboard() {
       const { data: keys } = await supabase.from('api_keys').select('*').eq('user_id', userId).eq('is_active', true);
       setApiKeys(keys || []);
 
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-
       const { data: logs } = await supabase
         .from('usage_logs')
         .select('*')
         .eq('user_id', userId)
-        .gte('timestamp', startOfMonth.toISOString())
         .order('timestamp', { ascending: false });
 
       setUsageLogs(logs || []);
-      recalculateSpend(logs || [], userData?.monthly_budget || 2000);
+      const total = (logs || []).reduce((sum, log) => sum + log.cost, 0);
+      setSpent(total);
+      setPercentage((total / (userData?.monthly_budget || 2000)) * 100);
     } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const setupRealtime = () => {
-    const userId = session?.user?.id;
-    if (!userId) return;
-
-    const channel = supabase
-      .channel('usage_updates')
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'usage_logs',
-        filter: `user_id=eq.${userId}`
-      }, (payload) => {
-        const newLog = payload.new as UsageLog;
-        setUsageLogs(prev => [newLog, ...prev]);
-        setSpent(prev => {
-          const newSpent = prev + newLog.cost;
-          setPercentage((newSpent / (user?.monthly_budget || 2000)) * 100);
-          return newSpent;
-        });
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  };
-
-  const recalculateSpend = (logs: UsageLog[], budget: number) => {
-    const total = logs.reduce((sum, log) => sum + log.cost, 0);
-    setSpent(total);
-    setPercentage((total / budget) * 100);
-  };
-
-  const handleEmergencyRevoke = async (key: APIKey) => {
-    setRevoking(true);
-    try {
-      const { error: deleteError } = await supabase
-        .from('api_keys')
-        .delete()
-        .eq('id', key.id);
-      
-      if (deleteError) throw deleteError;
-      
-      setApiKeys(prev => prev.filter(k => k.id !== key.id));
-      setShowKillSwitch(false);
-      setKeyToRevoke(null);
-      alert(`Key "${key.nickname}" revoked successfully.`);
-    } catch (error: any) {
-      console.error('Revoke failed:', error);
-      alert('Failed to revoke key: ' + error.message);
-    } finally {
-      setRevoking(false);
+      console.error('Data fetch error:', error);
     }
   };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
-    setUser(null);
-    setApiKeys([]);
-    setUsageLogs([]);
   };
-
-  const monthlyBurnRate = spent / (Math.max(1, new Date().getDate()) * 24);
-  const totalTokens = usageLogs.reduce((sum, log) => sum + log.tokens_input + log.tokens_output, 0);
-  const daysRemaining = user ? (user.monthly_budget - spent) / Math.max(0.01, monthlyBurnRate * 24) : 0;
-  
-  const providerCosts: Record<string, number> = {};
-  usageLogs.forEach(log => { providerCosts[log.provider] = (providerCosts[log.provider] || 0) + log.cost; });
-  const primaryProvider = Object.entries(providerCosts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'None';
-
-  if (setupError) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
-        <div className="bg-destructive/10 p-4 rounded-full mb-6 text-destructive">
-          <AlertTriangle size={48} />
-        </div>
-        <h2 className="text-2xl font-bold mb-4">Configuration Required</h2>
-        <p className="text-muted-foreground max-w-md mb-8">{setupError}</p>
-        <Button onClick={() => window.location.reload()}>Retry Connection</Button>
-      </div>
-    );
-  }
 
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="animate-spin text-primary" size={32} />
-          <p className="text-sm text-muted-foreground">Initializing spent intelligence...</p>
+          <p className="text-sm text-muted-foreground">Initializing spend intelligence...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If environment variables are missing, show a helpful setup screen
+  if (setupError) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-primary/10 p-4 rounded-full w-fit mx-auto text-primary mb-2">
+            <Flame size={48} />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">BURN RATE</h1>
+            <p className="text-muted-foreground"> Spend intelligence for the LLM era.</p>
+          </div>
+
+          <Alert variant="destructive" className="text-left border-primary/20 bg-primary/5">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>Environment Variables Required</AlertTitle>
+            <AlertDescription className="space-y-4">
+              <p>Please add your Supabase credentials to your <code>.env</code> file:</p>
+              <ul className="list-disc list-inside font-mono text-xs opacity-80">
+                <li>NEXT_PUBLIC_SUPABASE_URL</li>
+                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
+              </ul>
+              <div className="pt-2">
+                <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => window.location.reload()}>
+                  Refresh Page
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+          
+          <div className="pt-4 text-xs text-muted-foreground">
+            Looking for port 3000? Make sure you are viewing the preview URL correctly.
+          </div>
         </div>
       </div>
     );
@@ -211,6 +153,14 @@ export default function BurnRateDashboard() {
   if (!session) {
     return <AuthScreen />;
   }
+
+  const monthlyBurnRate = spent / (Math.max(1, new Date().getDate()) * 24);
+  const totalTokens = usageLogs.reduce((sum, log) => sum + log.tokens_input + log.tokens_output, 0);
+  const daysRemaining = user ? (user.monthly_budget - spent) / Math.max(0.01, monthlyBurnRate * 24) : 0;
+  
+  const providerCosts: Record<string, number> = {};
+  usageLogs.forEach(log => { providerCosts[log.provider] = (providerCosts[log.provider] || 0) + log.cost; });
+  const primaryProvider = Object.entries(providerCosts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'None';
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -225,25 +175,6 @@ export default function BurnRateDashboard() {
               </div>
               <h1 className="font-headline font-bold text-lg tracking-tight">BURN RATE</h1>
             </div>
-            
-            <nav className="hidden md:flex items-center gap-6">
-              <a href="#" className="text-sm font-medium text-foreground flex items-center gap-2">
-                <LayoutDashboard size={16} className="text-primary" />
-                Dashboard
-              </a>
-              <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                <Database size={16} />
-                Vault
-              </a>
-              <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                <Activity size={16} />
-                Analytics
-              </a>
-              <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2">
-                <Settings size={16} />
-                Settings
-              </a>
-            </nav>
           </div>
 
           <div className="flex items-center gap-4">
@@ -251,7 +182,6 @@ export default function BurnRateDashboard() {
               <div className="w-1.5 h-1.5 rounded-full bg-[#30D158] animate-pulse" />
               LIVE TELEMETRY
             </Badge>
-            <div className="h-8 w-px bg-border mx-2 hidden sm:block" />
             <Button variant="ghost" size="icon" className="rounded-full" onClick={handleSignOut}>
               <LogOut size={20} />
             </Button>
@@ -304,97 +234,14 @@ export default function BurnRateDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
             <MultiProviderTable usageLogs={usageLogs} />
-            <div className="p-6 rounded-xl border border-border bg-card shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-full bg-[#30D158]/10 text-[#30D158]">
-                  <ArrowUpRight size={24} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-lg">Predictive Cost Intelligence</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Spend projected to reach ${(spent * 2).toFixed(0)} by end of cycle.
-                  </p>
-                </div>
-              </div>
-              <Button size="lg" className="bg-primary hover:bg-primary/90 rounded-full font-bold px-8">
-                View Projection
-              </Button>
-            </div>
           </div>
           
           <div className="space-y-8">
             <OptimizationEngine usageLogs={usageLogs} />
-            <KeyVault 
-              apiKeys={apiKeys} 
-              onKeysChange={fetchData} 
-              onEmergencyRevoke={(key) => {
-                setKeyToRevoke(key);
-                setShowKillSwitch(true);
-              }}
-            />
+            <KeyVault apiKeys={apiKeys} onKeysChange={fetchData} />
           </div>
         </div>
       </main>
-
-      <footer className="border-t border-border mt-20 bg-card/30">
-        <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2 opacity-50 grayscale hover:grayscale-0 transition-all cursor-pointer">
-            <Flame size={18} />
-            <span className="font-headline font-bold text-sm tracking-tighter">BURN RATE v1.0.4</span>
-          </div>
-          <p className="text-xs text-muted-foreground font-code">
-            SECURELY MONITORING {usageLogs.length.toLocaleString()} API CALLS
-          </p>
-          <div className="flex items-center gap-6">
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Documentation</a>
-            <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
-          </div>
-        </div>
-      </footer>
-
-      <Dialog open={showKillSwitch} onOpenChange={setShowKillSwitch}>
-        <DialogContent className="max-w-md border-[#FF453A]/30">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-[#FF453A]">
-              <ShieldAlert size={20} />
-              EMERGENCY KEY REVOCATION
-            </DialogTitle>
-            <DialogDescription>
-              This will immediately delete API keys and block all future requests. This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-4">
-            {keyToRevoke && (
-              <div className="p-4 rounded-lg bg-muted border border-[#FF453A]/30">
-                <p className="font-medium">{keyToRevoke.nickname}</p>
-                <p className="text-sm text-muted-foreground">{keyToRevoke.provider}</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={() => {
-                setShowKillSwitch(false);
-                setKeyToRevoke(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
-              className="flex-1 bg-[#FF453A] hover:bg-[#FF453A]/90"
-              disabled={!keyToRevoke || revoking}
-              onClick={() => keyToRevoke && handleEmergencyRevoke(keyToRevoke)}
-            >
-              {revoking ? 'REVOKING...' : 'CONFIRM REVOKE'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -436,12 +283,12 @@ function AuthScreen() {
             <Flame className="text-white" size={32} />
           </div>
           <h1 className="text-3xl font-bold font-headline tracking-tight">BURN RATE</h1>
-          <p className="text-muted-foreground mt-2">Real-time API usage monitoring</p>
+          <p className="text-muted-foreground mt-2">Real-time spend intelligence</p>
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground" required />
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground" required />
+          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground focus:ring-2 focus:ring-primary outline-none" required />
+          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground focus:ring-2 focus:ring-primary outline-none" required />
           <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50">
             {loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In'}
           </button>
