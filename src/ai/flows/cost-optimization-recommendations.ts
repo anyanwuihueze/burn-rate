@@ -8,7 +8,7 @@
  */
 
 import { ai } from '@/ai/genkit';
-import { z } from 'genkit';
+import { z } from 'zod';
 
 const LLMUsageDataInputSchema = z.object({
   usageSummary: z
@@ -65,7 +65,7 @@ const costOptimizationFlow = ai.defineFlow(
     inputSchema: LLMUsageDataInputSchema,
     outputSchema: CostOptimizationRecommendationsOutputSchema,
   },
-  async (input) => {
+  async (input: any) => {
     const { output } = await costOptimizationPrompt(input);
     return output!;
   }
