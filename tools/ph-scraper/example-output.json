@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-02-26T17:35:00Z",
+  "campaign": "burn-rate-ph-launch",
+  "targets": [
+    {
+      "id": "ph_001",
+      "product_name": "AI-Dev-Tool",
+      "tagline": "AI-powered code assistant for developers",
+      "votes": 234,
+      "comments": 45,
+      "url": "https://producthunt.com/posts/ai-dev-tool",
+      "maker": {
+        "name": "John Doe",
+        "twitter": "@johndoe",
+        "email": null,
+        "linkedin": "linkedin.com/in/johndoe"
+      },
+      "priority": "high",
+      "outreach_channel": "twitter",
+      "message": "Hey John, saw AI-Dev-Tool on PH. Congrats! Quick question: how do you track API costs? I built Burn Rate ($5/mo) that helps AI devs avoid bill shock. Interested?",
+      "status": "pending"
+    }
+  ],
+  "stats": {
+    "total_scraped": 50,
+    "ai_filtered": 23,
+    "contact_found": 12,
+    "high_priority": 8
+  }
+}
