@@ -1,0 +1,108 @@
+const SUPABASE_URL = 'https://thbpkpynvoueniovmdop.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoYnBrcHludm91ZW5pb3ZtZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MTI5MTAsImV4cCI6MjA4NzA4ODkxMH0.tIzHk1eWEd7NrF21jdP6FiwgwEp3EjGikcHC1xs9Lak';
+const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoYnBrcHludm91ZW5pb3ZtZG9wIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTUxMjkxMCwiZXhwIjoyMDg3MDg4OTEwfQ.nE8zKmjLJ1min1ZszJ0Hys3SxUuG3R2-xf15WjSr_G8';
+const TEST_USER_ID = 'a8fccc8f-13c4-453c-8d10-3ecc77e9fa45';
+
+function calculateCost(model, input, output) {
+  const pricing = {
+    'gemini-2.0-flash': { input: 0.0001, output: 0.0004 },
+    'llama-3.3-70b': { input: 0.00059, output: 0.00079 },
+    'gpt-4o-mini': { input: 0.00015, output: 0.0006 },
+    'claude-3-haiku': { input: 0.00025, output: 0.00125 },
+  };
+  const rate = pricing[model] ?? { input: 0.001, output: 0.001 };
+  return ((input * rate.input) + (output * rate.output)) / 1000;
+}
+
+async function send(entries) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/track-usage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+    body: JSON.stringify({ metrics: entries }),
+  });
+  return res.json();
+}
+
+async function getLogs() {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/usage_logs?user_id=eq.${TEST_USER_ID}&order=timestamp.desc&limit=5`,
+    { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } }
+  );
+  return res.json();
+}
+
+async function run() {
+  console.log('\n╔══════════════════════════════════╗');
+  console.log('║  BurnRate — Full System Test     ║');
+  console.log('╚══════════════════════════════════╝\n');
+  let pass = 0, fail = 0;
+
+  // TEST 1
+  process.stdout.write('TEST 1: track-usage reachable... ');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/track-usage`, { method: 'OPTIONS' });
+    if (res.status === 200 || res.status === 204) { console.log('✅ PASS'); pass++; }
+    else { console.log(`❌ FAIL (${res.status})`); fail++; }
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  // TEST 2
+  process.stdout.write('TEST 2: Google entry via SDK path... ');
+  try {
+    const r = await send([{ user_id: TEST_USER_ID, provider: 'google', model: 'gemini-2.0-flash', tokens_input: 12, tokens_output: 9, cost: calculateCost('gemini-2.0-flash',12,9), timestamp: new Date().toISOString() }]);
+    if (r.inserted >= 1) { console.log('✅ PASS'); pass++; } else { console.log(`❌ FAIL — ${JSON.stringify(r)}`); fail++; }
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  // TEST 3
+  process.stdout.write('TEST 3: Groq entry via SDK path... ');
+  try {
+    const r = await send([{ user_id: TEST_USER_ID, provider: 'groq', model: 'llama-3.3-70b', tokens_input: 50, tokens_output: 120, cost: calculateCost('llama-3.3-70b',50,120), timestamp: new Date().toISOString() }]);
+    if (r.inserted >= 1) { console.log('✅ PASS'); pass++; } else { console.log(`❌ FAIL — ${JSON.stringify(r)}`); fail++; }
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  // TEST 4
+  process.stdout.write('TEST 4: Batch insert (2 entries)... ');
+  try {
+    const r = await send([
+      { user_id: TEST_USER_ID, provider: 'openai', model: 'gpt-4o-mini', tokens_input: 200, tokens_output: 80, cost: calculateCost('gpt-4o-mini',200,80), timestamp: new Date().toISOString() },
+      { user_id: TEST_USER_ID, provider: 'anthropic', model: 'claude-3-haiku', tokens_input: 350, tokens_output: 150, cost: calculateCost('claude-3-haiku',350,150), timestamp: new Date().toISOString() },
+    ]);
+    if (r.inserted === 2) { console.log('✅ PASS'); pass++; } else { console.log(`❌ FAIL — inserted ${r.inserted}, expected 2`); fail++; }
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  // TEST 5
+  process.stdout.write('TEST 5: Data in Supabase... ');
+  await new Promise(r => setTimeout(r, 1000));
+  try {
+    const logs = await getLogs();
+    if (!Array.isArray(logs) || logs.length === 0) { console.log(`❌ FAIL — ${JSON.stringify(logs)}`); fail++; }
+    else {
+      console.log(`✅ PASS — ${logs.length} entries`);
+      console.log('\n  Latest in DB:');
+      logs.forEach(l => console.log(`  • ${l.provider.padEnd(10)} ${l.model.padEnd(22)} in:${String(l.tokens_input).padStart(4)} out:${String(l.tokens_output).padStart(4)}  $${parseFloat(l.cost).toFixed(8)}`));
+      console.log('');
+      pass++;
+    }
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  // TEST 6
+  process.stdout.write('TEST 6: poll-usage function... ');
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/poll-usage`, { method: 'POST', headers: { 'Authorization': `Bearer ${SERVICE_ROLE_KEY}` } });
+    const data = await res.json();
+    console.log('✅ PASS\n\n  Per-provider poll results:');
+    (data.results || []).forEach(r => {
+      const icon = r.status === 'success' ? '✅' : r.status === 'sdk_required' ? '📦' : '⚠️ ';
+      console.log(`  ${icon} ${r.provider.padEnd(12)} ${r.status}${r.entries ? ` — ${r.entries} entries` : ''}`);
+      if (r.hint) console.log(`              💡 ${r.hint}`);
+    });
+    console.log(`\n  Total inserted by poll: ${data.total_inserted}`);
+    pass++;
+  } catch(e) { console.log(`❌ FAIL — ${e.message}`); fail++; }
+
+  console.log('\n══════════════════════════════════');
+  console.log(`  ${pass} passed  |  ${fail} failed`);
+  console.log(fail === 0 ? '\n  🎉 APP IS WORKING. Refresh dashboard.\n' : '\n  ⚠️  Fix failing tests above.\n');
+  console.log('══════════════════════════════════\n');
+}
+
+run().catch(console.error);

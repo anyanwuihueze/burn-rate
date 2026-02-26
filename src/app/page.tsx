@@ -7,6 +7,7 @@ import { StatsCard } from '@/components/dashboard/StatsCard';
 import { MultiProviderTable } from '@/components/dashboard/MultiProviderTable';
 import { OptimizationEngine } from '@/components/dashboard/OptimizationEngine';
 import { KeyVault } from '@/components/vault/KeyVault';
+import { SDKRequiredCard } from '@/components/dashboard/SDKRequiredCard';
 import { AlertBanner } from '@/components/dashboard/AlertBanner';
 import { 
   Zap, Flame, Calendar, Cpu, ShieldAlert, AlertTriangle, Loader2, RefreshCw
@@ -263,6 +264,23 @@ export default function BurnRateDashboard() {
           <OptimizationEngine usageLogs={usageLogs} />
         </section>
 
+        {/* SDK Required Cards */}
+        {apiKeys.filter(k => ['google','groq','nvidia','deepseek'].includes(k.provider)).length > 0 && (
+          <section className='space-y-3 mt-2'>
+            <p className='text-xs text-zinc-500 uppercase tracking-widest font-semibold px-1'>SDK-Tracked Providers</p>
+            {apiKeys
+              .filter(k => ['google','groq','nvidia','deepseek'].includes(k.provider))
+              .filter((k, i, arr) => arr.findIndex(x => x.provider === k.provider) === i)
+              .map(k => (
+                <SDKRequiredCard
+                  key={k.id}
+                  provider={k.provider}
+                  supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL}
+                  supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}
+                />
+              ))}
+          </section>
+        )}
         <section>
           <MultiProviderTable usageLogs={usageLogs} />
         </section>
