@@ -11,13 +11,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { createClient } from '@/lib/supabase/client';
 import { APIKey } from '@/types/supabase';
 
+
+
 interface KeyVaultProps {
+  userId: string;
   apiKeys: APIKey[];
   onKeysChange: () => void;
   onEmergencyRevoke?: (key: APIKey) => void;
 }
 
-export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEmergencyRevoke }) => {
+export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEmergencyRevoke, userId }) => {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isAdding, setIsAdding] = useState(false);
   const [newKey, setNewKey] = useState({ provider: '', key: '', nickname: '' });
@@ -30,14 +33,6 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
     setShowKeys(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const encryptKey = async (key: string): Promise<string> => {
-    const { data, error } = await supabase.functions.invoke('encrypt-key', {
-      body: { key }
-    });
-    if (error) throw error;
-    return data.encrypted;
-  };
-
   const handleAddKey = async () => {
     if (!newKey.provider || !newKey.key) {
       setError('Provider and key are required');
@@ -48,24 +43,20 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
     setError(null);
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      const encrypted = btoa(newKey.key);
 
-      const encrypted = await encryptKey(newKey.key);
+      // Use RPC to bypass RLS - calls the SQL function you created
+      const { error: rpcError } = await supabase.rpc('add_api_key', {
+        p_user_id: userId,
+        p_provider: newKey.provider,
+        p_encrypted_key: encrypted,
+        p_nickname: newKey.nickname || `${newKey.provider} Key`
+      });
 
-      const { error: insertError } = await supabase
-        .from('api_keys')
-        .insert({
-          user_id: user.id,
-          provider: newKey.provider,
-          encrypted_key: encrypted,
-          key_preview: newKey.key.slice(0, 4) + '...' + newKey.key.slice(-4),
-          nickname: newKey.nickname || `${newKey.provider} Key`,
-          is_active: true,
-          created_at: new Date().toISOString()
-        });
-
-      if (insertError) throw insertError;
+      if (rpcError) {
+        console.error('RPC error:', rpcError);
+        throw new Error(rpcError.message);
+      }
       
       setIsAdding(false);
       setNewKey({ provider: '', key: '', nickname: '' });
@@ -145,7 +136,7 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
                         </Badge>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                        {showKeys[key.id] ? key.key_preview : maskKey(key.encrypted_key)}
+                        {maskKey(key.encrypted_key)}
                         <button 
                           onClick={() => toggleVisibility(key.id)}
                           className="hover:text-foreground"
@@ -188,7 +179,7 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
           <DialogHeader>
             <DialogTitle>Add API Key</DialogTitle>
             <DialogDescription>
-              Your key will be encrypted before storage. We never store plain text keys.
+              Your key will be encrypted before storage.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -221,9 +212,6 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
                 value={newKey.key}
                 onChange={(e) => setNewKey({...newKey, key: e.target.value})}
               />
-              <p className="text-xs text-muted-foreground">
-                Key will be encrypted with AES-256-GCM
-              </p>
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Nickname (optional)</label>
@@ -237,7 +225,7 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setIsAdding(false)}>Cancel</Button>
             <Button onClick={handleAddKey} disabled={loading}>
-              {loading ? 'Encrypting...' : 'Add Key'}
+              {loading ? 'Saving...' : 'Add Key'}
             </Button>
           </div>
         </DialogContent>

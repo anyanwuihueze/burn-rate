@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { BurnGauge } from '@/components/dashboard/BurnGauge';
 import { StatsCard } from '@/components/dashboard/StatsCard';
@@ -9,161 +9,188 @@ import { OptimizationEngine } from '@/components/dashboard/OptimizationEngine';
 import { KeyVault } from '@/components/vault/KeyVault';
 import { AlertBanner } from '@/components/dashboard/AlertBanner';
 import { 
-  Zap, Flame, Calendar, Cpu, Activity, LayoutDashboard, 
-  Settings, Database, ArrowUpRight, LogOut, Loader2, AlertTriangle, ShieldAlert,
-  Terminal, ExternalLink
+  Zap, Flame, Calendar, Cpu, ShieldAlert, AlertTriangle, Loader2, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { UsageLog, APIKey, User } from '@/types/supabase';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
+const [userId, setUserId] = useState<string | null>(null);
 
 export default function BurnRateDashboard() {
-  const [user, setUser] = useState<User | null>(null);
-  const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
-  const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
+  const [usageLogs, setUsageLogs] = useState([]);
+  const [apiKeys, setApiKeys] = useState([]);
   const [loading, setLoading] = useState(true);
   const [spent, setSpent] = useState(0);
   const [percentage, setPercentage] = useState(0);
-  const [session, setSession] = useState<any>(null);
+  const [anomalies, setAnomalies] = useState([]);
   const [showKillSwitch, setShowKillSwitch] = useState(false);
-  const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
+  const [keyToRevoke, setKeyToRevoke] = useState(null);
   const [revoking, setRevoking] = useState(false);
-  const [setupError, setSetupError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   
   const supabase = createClient();
+  const monthlyBudget = 2000;
 
   useEffect(() => {
-    const checkConfig = async () => {
-      const hasUrl = !!process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const hasKey = !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-      if (!hasUrl || !hasKey) {
-        setSetupError('Missing Supabase credentials');
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        setSession(session);
-      } catch (err: any) {
-        console.error('Auth error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    checkConfig();
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    supabase.auth.getUser().then(({ data }) => {
+      setUserId(data.user?.id ?? null);
     });
+  }, []);
 
-    return () => subscription.unsubscribe();
-  }, [supabase.auth]);
-
+  // FORCE MOUNT
   useEffect(() => {
-    if (session?.user) {
-      fetchData();
-    }
-  }, [session]);
+    setMounted(true);
+  }, []);
+
+  // FETCH DATA IMMEDIATELY WHEN MOUNTED
+  useEffect(() => {
+    if (!mounted) return;
+    
+    console.log('🔥 FETCHING DATA...');
+    fetchData();
+    
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, [mounted]);
 
   const fetchData = async () => {
     try {
-      const userId = session.user.id;
+      console.log("📡 Calling Supabase...");
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
 
-      const { data: userData } = await supabase.from('users').select('*').eq('id', userId).single();
-      setUser(userData);
+      const { data: logs, error: logsError } = await supabase
+        .from("usage_logs")
+        .select("*")
+        .eq("user_id", userId)
+        .gte("timestamp", startOfMonth.toISOString())
+        .order("timestamp", { ascending: false });
 
-      const { data: keys } = await supabase.from('api_keys').select('*').eq('user_id', userId).eq('is_active', true);
-      setApiKeys(keys || []);
-
-      const { data: logs } = await supabase
-        .from('usage_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .order('timestamp', { ascending: false });
+      if (logsError) {
+        console.error("Logs error:", logsError);
+      } else {
+        console.log("✅ Logs fetched:", logs?.length || 0);
+      }
 
       setUsageLogs(logs || []);
-      const total = (logs || []).reduce((sum, log) => sum + log.cost, 0);
-      setSpent(total);
-      setPercentage((total / (userData?.monthly_budget || 2000)) * 100);
+      const totalSpent = logs?.reduce((sum, log) => sum + (log.cost || 0), 0) || 0;
+      setSpent(totalSpent);
+      setPercentage(Math.min((totalSpent / monthlyBudget) * 100, 100));
+
+      const { data: keys, error: keysError } = await supabase
+        .from("api_keys")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("is_active", true);
+      
+      if (keysError) {
+        console.error("Keys error:", keysError);
+      } else {
+        console.log("✅ Keys fetched:", keys?.length || 0);
+        console.log("📦 Keys:", keys);
+      }
+      
+      setApiKeys(keys || []);
+      detectAnomalies(logs || []);
     } catch (error) {
-      console.error('Data fetch error:', error);
+      console.error("❌ Fetch error:", error);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
+  const detectAnomalies = (logs) => {
+    const alerts = [];
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const recentLogs = logs.filter(log => new Date(log.timestamp) > oneHourAgo);
+    const recentCost = recentLogs.reduce((sum, log) => sum + log.cost, 0);
+    
+    if (recentCost > 2.00) {
+      alerts.push({
+        id: 'spike-' + now.getTime(),
+        severity: 'critical',
+        message: `Usage spike: $${recentCost.toFixed(2)} in last hour`,
+        recommendedAction: 'Review usage or revoke keys'
+      });
+    }
+    setAnomalies(alerts);
   };
+
+  const handleEmergencyRevoke = async (key) => {
+    setRevoking(true);
+    try {
+      await supabase.from('api_keys').delete().eq('id', key.id);
+      await fetchData();
+      setShowKillSwitch(false);
+      setKeyToRevoke(null);
+    } catch (error) {
+      console.error('Revoke failed:', error);
+    } finally {
+      setRevoking(false);
+    }
+  };
+
+  // FORCE RENDER AFTER 3 SECONDS EVEN IF LOADING
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.log('⏱️ FORCE RENDER - timeout reached');
+        setLoading(false);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="animate-spin text-primary" size={32} />
+        <span className="ml-2 text-sm text-muted-foreground">Mounting...</span>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <Loader2 className="animate-spin text-primary" size={32} />
-          <p className="text-sm text-muted-foreground">Initializing spend intelligence...</p>
-        </div>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Loader2 className="animate-spin text-primary" size={32} />
+        <p className="text-sm text-muted-foreground">Loading spend data...</p>
+        <Button variant="outline" size="sm" onClick={() => { setLoading(false); fetchData(); }}>
+          <RefreshCw size={14} className="mr-2" />
+          Force Load
+        </Button>
       </div>
     );
   }
 
-  // If environment variables are missing, show a helpful setup screen
-  if (setupError) {
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center">
-        <div className="max-w-md w-full space-y-8">
-          <div className="bg-primary/10 p-4 rounded-full w-fit mx-auto text-primary mb-2">
-            <Flame size={48} />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight">BURN RATE</h1>
-            <p className="text-muted-foreground"> Spend intelligence for the LLM era.</p>
-          </div>
-
-          <Alert variant="destructive" className="text-left border-primary/20 bg-primary/5">
-            <Terminal className="h-4 w-4" />
-            <AlertTitle>Environment Variables Required</AlertTitle>
-            <AlertDescription className="space-y-4">
-              <p>Please add your Supabase credentials to your <code>.env</code> file:</p>
-              <ul className="list-disc list-inside font-mono text-xs opacity-80">
-                <li>NEXT_PUBLIC_SUPABASE_URL</li>
-                <li>NEXT_PUBLIC_SUPABASE_ANON_KEY</li>
-              </ul>
-              <div className="pt-2">
-                <Button variant="outline" size="sm" className="w-full gap-2" onClick={() => window.location.reload()}>
-                  Refresh Page
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-          
-          <div className="pt-4 text-xs text-muted-foreground">
-            Looking for port 3000? Make sure you are viewing the preview URL correctly.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <AuthScreen />;
-  }
-
-  const monthlyBurnRate = spent / (Math.max(1, new Date().getDate()) * 24);
-  const totalTokens = usageLogs.reduce((sum, log) => sum + log.tokens_input + log.tokens_output, 0);
-  const daysRemaining = user ? (user.monthly_budget - spent) / Math.max(0.01, monthlyBurnRate * 24) : 0;
-  
-  const providerCosts: Record<string, number> = {};
-  usageLogs.forEach(log => { providerCosts[log.provider] = (providerCosts[log.provider] || 0) + log.cost; });
-  const primaryProvider = Object.entries(providerCosts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'None';
+  const monthlyBurnRate = spent / (new Date().getDate() * 24) || 0;
+  const totalTokens = usageLogs.reduce((sum, log) => sum + (log.tokens_input || 0) + (log.tokens_output || 0), 0);
+  const daysRemaining = (monthlyBudget - spent) / (monthlyBurnRate * 24) || 30;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {anomalies.map(alert => (
+        <div key={alert.id} className="bg-[#FF453A] text-white px-4 py-3 animate-pulse">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldAlert size={20} />
+              <span className="font-bold">{alert.message}</span>
+            </div>
+            <Button 
+              variant="secondary" 
+              size="sm" 
+              onClick={() => setShowKillSwitch(true)}
+              className="bg-white text-[#FF453A] hover:bg-white/90 font-bold"
+            >
+              EMERGENCY KILL SWITCH
+            </Button>
+          </div>
+        </div>
+      ))}
+
       <AlertBanner percentage={percentage} />
 
       <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-40">
@@ -176,14 +203,14 @@ export default function BurnRateDashboard() {
               <h1 className="font-headline font-bold text-lg tracking-tight">BURN RATE</h1>
             </div>
           </div>
-
           <div className="flex items-center gap-4">
             <Badge variant="outline" className="font-code text-[10px] hidden sm:flex gap-1 border-muted text-muted-foreground">
               <div className="w-1.5 h-1.5 rounded-full bg-[#30D158] animate-pulse" />
               LIVE TELEMETRY
             </Badge>
-            <Button variant="ghost" size="icon" className="rounded-full" onClick={handleSignOut}>
-              <LogOut size={20} />
+            <Badge variant="secondary" className="text-[10px]">TEST MODE</Badge><Button variant="outline" size="sm" onClick={() => window.location.reload()}>🔄 Refresh</Button>
+            <Button variant="ghost" size="sm" onClick={fetchData}>
+              <RefreshCw size={14} />
             </Button>
           </div>
         </div>
@@ -192,117 +219,110 @@ export default function BurnRateDashboard() {
       <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full space-y-10">
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
           <div className="lg:col-span-5 flex justify-center">
-            <BurnGauge percentage={percentage} spent={spent} totalBudget={user?.monthly_budget || 2000} />
+            <BurnGauge percentage={percentage} spent={spent} totalBudget={monthlyBudget} />
           </div>
           
           <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
             <StatsCard 
               label="Monthly Burn Rate"
               value={`$${monthlyBurnRate.toFixed(2)}/hr`}
-              trend="up"
-              trendValue="+12%"
               icon={<Flame size={18} />}
-              color="text-[#FF453A]"
+              color="text-orange-500"
             />
             <StatsCard 
               label="Total Tokens"
-              value={(totalTokens / 1000).toFixed(1) + 'k'}
-              trend="stable"
-              trendValue="Live"
-              icon={<Zap size={18} />}
-              color="text-[#FF9F0A]"
-            />
-            <StatsCard 
-              label="Runway Remaining"
-              value={`${daysRemaining.toFixed(1)} Days`}
-              trend="down"
-              trendValue="-1.2d"
-              icon={<Calendar size={18} />}
-              color="text-[#30D158]"
-            />
-            <StatsCard 
-              label="Primary Engine"
-              value={primaryProvider.charAt(0).toUpperCase() + primaryProvider.slice(1)}
-              trend="stable"
-              trendValue="64% total"
+              value={totalTokens.toLocaleString()}
               icon={<Cpu size={18} />}
-              color="text-[#0A84FF]"
+              color="text-blue-500"
+            />
+            <StatsCard 
+              label="Days Remaining"
+              value={Math.floor(daysRemaining)}
+              icon={<Calendar size={18} />}
+              color="text-green-500"
+            />
+            <StatsCard 
+              label="Active Keys"
+              value={apiKeys.length}
+              icon={<Zap size={18} />}
+              color="text-purple-500"
             />
           </div>
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-8">
-            <MultiProviderTable usageLogs={usageLogs} />
-          </div>
-          
-          <div className="space-y-8">
-            <OptimizationEngine usageLogs={usageLogs} />
-            <KeyVault apiKeys={apiKeys} onKeysChange={fetchData} />
-          </div>
-        </div>
+        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <KeyVault 
+            apiKeys={apiKeys} 
+            onKeysChange={fetchData}
+            userId={userId ?? ""}
+            onEmergencyRevoke={(key) => {
+              setKeyToRevoke(key);
+              setShowKillSwitch(true);
+            }}
+          />
+          <OptimizationEngine usageLogs={usageLogs} />
+        </section>
+
+        <section>
+          <MultiProviderTable usageLogs={usageLogs} />
+        </section>
       </main>
+
+      <Dialog open={showKillSwitch} onOpenChange={setShowKillSwitch}>
+        <DialogContent className="border-[#FF453A]/50">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-[#FF453A]">
+              <AlertTriangle size={20} />
+              EMERGENCY KEY REVOCATION
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete the API key. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            {keyToRevoke && (
+              <div className="bg-muted p-3 rounded-lg font-mono text-sm">
+                <div>Provider: {keyToRevoke.provider}</div>
+                <div>Key: {keyToRevoke.key_preview}</div>
+              </div>
+            )}
+            <div className="flex gap-3">
+              <Button variant="outline" onClick={() => setShowKillSwitch(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={() => handleEmergencyRevoke(keyToRevoke)}
+                disabled={revoking}
+                className="flex-1 bg-[#FF453A] hover:bg-[#FF453A]/90"
+              >
+                {revoking ? 'Revoking...' : 'REVOKE KEY'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function AuthScreen() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
+// TEMPORARY TEST BUTTON
+function TestKeyAdd() {
   const supabase = createClient();
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage('');
-
-    try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        setMessage('Check your email for confirmation!');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-      }
-    } catch (error: any) {
-      setMessage(error.message);
-    } finally {
-      setLoading(false);
+  const addTestKey = async () => {
+    const { error } = await supabase.rpc('add_api_key', {
+      p_user_id: userId,
+      p_provider: "google",
+      p_encrypted_key: "dGVzdA==",
+      p_nickname: "Test Key"
+    });
+    if (error) {
+      console.error("TEST FAILED:", error);
+      alert("Error: " + error.message);
+    } else {
+      console.log("TEST SUCCESS");
+      alert("Key added! Refresh page.");
     }
   };
-
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <div className="bg-primary p-3 rounded-xl inline-flex mb-4">
-            <Flame className="text-white" size={32} />
-          </div>
-          <h1 className="text-3xl font-bold font-headline tracking-tight">BURN RATE</h1>
-          <p className="text-muted-foreground mt-2">Real-time spend intelligence</p>
-        </div>
-
-        <form onSubmit={handleAuth} className="space-y-4">
-          <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground focus:ring-2 focus:ring-primary outline-none" required />
-          <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full p-3 rounded-lg bg-card border border-border text-foreground focus:ring-2 focus:ring-primary outline-none" required />
-          <button type="submit" disabled={loading} className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50">
-            {loading ? 'Processing...' : isSignUp ? 'Create Account' : 'Sign In'}
-          </button>
-        </form>
-
-        {message && <p className="text-center text-sm text-muted-foreground">{message}</p>}
-
-        <p className="text-center text-sm text-muted-foreground">
-          {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-          <button onClick={() => setIsSignUp(!isSignUp)} className="text-primary hover:underline">
-            {isSignUp ? 'Sign In' : 'Sign Up'}
-          </button>
-        </p>
-      </div>
-    </div>
-  );
+  return <button onClick={addTestKey} style={{position:'fixed',bottom:20,right:20,zIndex:9999,background:'red',color:'white',padding:10}}>TEST ADD KEY</button>;
 }
