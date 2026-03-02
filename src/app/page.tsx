@@ -1,4 +1,5 @@
 "use client";
+import dynamic from 'next/dynamic';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -16,9 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
-const [userId, setUserId] = useState<string | null>(null);
-
-export default function BurnRateDashboard() {
+function BurnRateDashboardInner() {
+  const [userId, setUserId] = useState('a8fccc8f-13c4-453c-8d10-3ecc77e9fa45');
   const [usageLogs, setUsageLogs] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,24 +106,76 @@ export default function BurnRateDashboard() {
     const alerts = [];
     const now = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
     const recentLogs = logs.filter(log => new Date(log.timestamp) > oneHourAgo);
+    const dayLogs = logs.filter(log => new Date(log.timestamp) > oneDayAgo);
+    const weekLogs = logs.filter(log => new Date(log.timestamp) > sevenDaysAgo);
+
     const recentCost = recentLogs.reduce((sum, log) => sum + log.cost, 0);
-    
+    const dayCost = dayLogs.reduce((sum, log) => sum + log.cost, 0);
+    const weekCost = weekLogs.reduce((sum, log) => sum + log.cost, 0);
+    const avgDailyCost = weekCost / 7;
+
+    // Rule 1: hourly spike over $2
     if (recentCost > 2.00) {
       alerts.push({
-        id: 'spike-' + now.getTime(),
+        id: 'spike-hour-' + now.getTime(),
         severity: 'critical',
-        message: `Usage spike: $${recentCost.toFixed(2)} in last hour`,
+        message: `🚨 Hourly spike: ${recentCost.toFixed(2)} in last hour`,
         recommendedAction: 'Review usage or revoke keys'
       });
     }
+
+    // Rule 2: today is 3x higher than daily average
+    if (avgDailyCost > 0 && dayCost > avgDailyCost * 3) {
+      alerts.push({
+        id: 'spike-day-' + now.getTime(),
+        severity: 'critical',
+        message: `🚨 Unusual day: ${dayCost.toFixed(2)} today vs ${avgDailyCost.toFixed(2)} daily avg`,
+        recommendedAction: 'Possible unauthorized usage — check your keys'
+      });
+    }
+
+    // Rule 3: single provider burning over 80% of total
+    const byCost = {};
+    dayLogs.forEach(log => { byCost[log.provider] = (byCost[log.provider] || 0) + log.cost; });
+    Object.entries(byCost).forEach(([provider, cost]) => {
+      if (dayCost > 0 && (cost / dayCost) > 0.8 && dayCost > 1) {
+        alerts.push({
+          id: 'provider-dom-' + provider,
+          severity: 'warning',
+          message: `⚠️ ${provider} is ${Math.round((cost/dayCost)*100)}% of today's spend (${cost.toFixed(2)})`,
+          recommendedAction: 'Check if this provider usage is expected'
+        });
+      }
+    });
+
+    // Rule 4: on track to exceed monthly budget
+    const daysInMonth = 30;
+    const dayOfMonth = now.getDate();
+    const projectedMonthly = (dayCost / 1) * daysInMonth;
+    if (projectedMonthly > monthlyBudget * 0.9 && dayCost > 0.5) {
+      alerts.push({
+        id: 'budget-projection-' + now.getTime(),
+        severity: 'warning',
+        message: `⚠️ On track to spend ${projectedMonthly.toFixed(0)} this month (budget: ${monthlyBudget})`,
+        recommendedAction: 'Consider switching to cheaper models'
+      });
+    }
+
     setAnomalies(alerts);
   };
 
   const handleEmergencyRevoke = async (key) => {
     setRevoking(true);
     try {
-      await supabase.from('api_keys').delete().eq('id', key.id);
+      // Deactivate in Burn Rate (stops polling immediately)
+      await supabase.from('api_keys').update({ is_active: false }).eq('id', key.id);
+      
+      // For OpenAI keys, we can attempt provider-level revoke
+      // For other providers, user must revoke manually — we show them the link
       await fetchData();
       setShowKillSwitch(false);
       setKeyToRevoke(null);
@@ -324,23 +376,7 @@ export default function BurnRateDashboard() {
   );
 }
 
-// TEMPORARY TEST BUTTON
-function TestKeyAdd() {
-  const supabase = createClient();
-  const addTestKey = async () => {
-    const { error } = await supabase.rpc('add_api_key', {
-      p_user_id: userId,
-      p_provider: "google",
-      p_encrypted_key: "dGVzdA==",
-      p_nickname: "Test Key"
-    });
-    if (error) {
-      console.error("TEST FAILED:", error);
-      alert("Error: " + error.message);
-    } else {
-      console.log("TEST SUCCESS");
-      alert("Key added! Refresh page.");
-    }
-  };
-  return <button onClick={addTestKey} style={{position:'fixed',bottom:20,right:20,zIndex:9999,background:'red',color:'white',padding:10}}>TEST ADD KEY</button>;
-}
+
+
+const BurnRateDashboard = dynamic(() => Promise.resolve(BurnRateDashboardInner), { ssr: false });
+export default BurnRateDashboard;
