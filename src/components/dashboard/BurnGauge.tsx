@@ -1,90 +1,92 @@
 "use client";
-
 import React, { useEffect, useState } from 'react';
-import { cn } from '@/lib/utils';
 
 interface BurnGaugeProps {
   percentage: number;
   totalBudget: number;
   spent: number;
-  className?: string;
 }
 
-export const BurnGauge: React.FC<BurnGaugeProps> = ({ percentage, totalBudget, spent, className }) => {
-  const [currentValue, setCurrentValue] = useState(0);
+export const BurnGauge: React.FC<BurnGaugeProps> = ({ percentage, totalBudget, spent }) => {
+  const [current, setCurrent] = useState(0);
   const size = 280;
   const strokeWidth = 14;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
 
   useEffect(() => {
-    const timer = setTimeout(() => setCurrentValue(percentage), 100);
+    const timer = setTimeout(() => setCurrent(percentage), 100);
     return () => clearTimeout(timer);
   }, [percentage]);
 
-  const offset = circumference - (currentValue / 100) * circumference;
-
-  const getColor = (pct: number) => {
-    if (pct < 80) return 'stroke-[#30D158]'; // Safe
-    if (pct < 95) return 'stroke-[#FF9F0A]'; // Warning
-    return 'stroke-[#FF453A]'; // Critical
-  };
-
-  const glowColor = (pct: number) => {
-    if (pct < 80) return 'drop-shadow-[0_0_12px_rgba(48,209,88,0.3)]';
-    if (pct < 95) return 'drop-shadow-[0_0_12px_rgba(255,159,10,0.3)]';
-    return 'drop-shadow-[0_0_12px_rgba(255,69,58,0.3)]';
-  };
+  const offset = circumference - (current / 100) * circumference;
+  const color = current < 80 ? '#30D158' : current < 95 ? '#FF9F0A' : '#FF453A';
+  const glow = current < 80
+    ? '0 0 20px rgba(48,209,88,0.25)'
+    : current < 95
+    ? '0 0 20px rgba(255,159,10,0.25)'
+    : '0 0 20px rgba(255,69,58,0.25)';
 
   return (
-    <div className={cn("relative flex items-center justify-center", className)}>
+    <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: size, height: size }}>
       <svg
         width={size}
         height={size}
-        className="transform -rotate-90 transition-all duration-1000 ease-out"
+        style={{ transform: 'rotate(-90deg)', filter: `drop-shadow(${glow})`, transition: 'all 1s ease-out' }}
       >
         {/* Track */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke="currentColor"
+          cx={size / 2} cy={size / 2} r={radius}
+          stroke="rgba(255,255,255,0.06)"
           strokeWidth={strokeWidth}
           fill="transparent"
-          className="text-muted/30"
         />
         {/* Progress */}
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          stroke="currentColor"
+          cx={size / 2} cy={size / 2} r={radius}
+          stroke={color}
           strokeWidth={strokeWidth}
           fill="transparent"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          className={cn(
-            "transition-all duration-1000 ease-out",
-            getColor(percentage),
-            glowColor(percentage)
-          )}
+          style={{ transition: 'stroke-dashoffset 1s ease-out, stroke 0.5s ease' }}
         />
       </svg>
-      
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-        <span className="text-muted-foreground text-xs font-medium uppercase tracking-widest mb-1">
+
+      {/* Center text */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        textAlign: 'center',
+      }}>
+        <span style={{
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '10px', letterSpacing: '0.2em',
+          textTransform: 'uppercase', color: '#555',
+          marginBottom: '6px',
+        }}>
           Burn Percentage
         </span>
-        <span className="text-5xl font-bold font-headline tracking-tighter tabular-nums">
-          {percentage.toFixed(1)}%
+        <span style={{
+          fontFamily: "'Bebas Neue', sans-serif",
+          fontSize: '56px', lineHeight: 1,
+          letterSpacing: '0.02em', color,
+        }}>
+          {current.toFixed(1)}%
         </span>
-        <div className="mt-4 flex flex-col items-center">
-          <span className="font-code text-sm text-muted-foreground tabular-nums">
-            ${spent.toLocaleString()} / ${totalBudget.toLocaleString()}
-          </span>
-          <div className="mt-2 h-1 w-12 rounded-full bg-muted/50" />
-        </div>
+        <span style={{
+          fontFamily: "'DM Mono', monospace",
+          fontSize: '12px', color: '#555',
+          marginTop: '8px',
+        }}>
+          ${spent.toFixed(2)} / ${totalBudget.toLocaleString()}
+        </span>
+        <div style={{
+          marginTop: '8px', width: '32px', height: '2px',
+          background: color, borderRadius: '2px',
+        }} />
       </div>
     </div>
   );

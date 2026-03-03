@@ -244,7 +244,7 @@ const styles: Record<string, React.CSSProperties> = {
 };
 
 function BurnRateDashboardInner() {
-  const [userId, setUserId] = useState<string>('a8fccc8f-13c4-453c-8d10-3ecc77e9fa45');
+  const [userId, setUserId] = useState<string>('');
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -282,11 +282,12 @@ function BurnRateDashboardInner() {
     console.log('🔥 FETCHING DATA...');
     fetchData();
     
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [mounted, userId]);
 
   const fetchData = async () => {
+    if (!userId) return;
     try {
       console.log("📡 Calling Supabase...");
       const startOfMonth = new Date();
@@ -493,7 +494,7 @@ function BurnRateDashboardInner() {
               <span style={styles.liveDot}></span>
               LIVE TELEMETRY
             </span>
-            <span style={styles.testBadge}>TEST MODE</span>
+            
             <button style={styles.refreshBtn} onClick={() => window.location.reload()}>
               🔄 Refresh
             </button>
