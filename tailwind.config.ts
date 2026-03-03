@@ -2,6 +2,13 @@ import type {Config} from 'tailwindcss';
 
 export default {
   darkMode: ['class'],
+  safelist: [
+    'bg-blue-950/40','border-blue-500/20','text-blue-400','bg-blue-400',
+    'bg-orange-950/40','border-orange-500/20','text-orange-400','bg-orange-400',
+    'bg-green-950/40','border-green-500/20','text-green-400','bg-green-400',
+    'bg-zinc-900/40','border-zinc-700/40','text-zinc-300','bg-zinc-400',
+    'animate-ping','animate-pulse','animate-spin',
+  ],
   content: [
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',

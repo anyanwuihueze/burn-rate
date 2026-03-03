@@ -6,21 +6,21 @@
   :root, .dark {
     --background: 0 0% 0%;
     --foreground: 240 5% 96%;
-    --card: 240 2% 11%;
+    --card: 240 2% 14%;
     --card-foreground: 240 5% 96%;
     --popover: 240 2% 11%;
     --popover-foreground: 240 5% 96%;
     --primary: 210 100% 52%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 2% 18%;
+    --secondary: 240 2% 16%;
     --secondary-foreground: 240 5% 96%;
-    --muted: 240 2% 18%;
+    --muted: 240 2% 16%;
     --muted-foreground: 240 2% 57%;
     --accent: 240 2% 18%;
     --accent-foreground: 240 5% 96%;
     --destructive: 3 100% 61%;
     --destructive-foreground: 0 0% 100%;
-    --border: 240 2% 18%;
+    --border: 240 2% 22%;
     --input: 240 2% 18%;
     --ring: 210 100% 52%;
     --radius: 0.75rem;
@@ -45,3 +45,19 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+html, body {
+  background-color: hsl(0 0% 0%) !important;
+  color: hsl(240 5% 96%) !important;
+}
+
+  :root, .dark {
+    --sidebar-background: 0 0% 5%;
+    --sidebar-foreground: 240 5% 96%;
+    --sidebar-border: 240 2% 18%;
+    --sidebar-accent: 240 2% 18%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-primary: 210 100% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-ring: 210 100% 52%;
+  }
