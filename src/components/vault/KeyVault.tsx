@@ -1,17 +1,8 @@
 "use client";
-
 import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card';
-import { Shield, Eye, EyeOff, Plus, Lock, Trash2, Key, AlertTriangle } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Shield, Eye, EyeOff, Plus, Key, Trash2, AlertTriangle, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { APIKey } from '@/types/supabase';
-
-
 
 interface KeyVaultProps {
   userId: string;
@@ -20,49 +11,42 @@ interface KeyVaultProps {
   onEmergencyRevoke?: (key: APIKey) => void;
 }
 
+const providers = [
+  { value: 'openai', label: 'OpenAI', color: '#30D158' },
+  { value: 'anthropic', label: 'Anthropic', color: '#FF9500' },
+  { value: 'google', label: 'Google AI', color: '#0A84FF' },
+  { value: 'groq', label: 'Groq', color: '#BF5AF2' },
+  { value: 'nvidia', label: 'NVIDIA', color: '#30D158' },
+  { value: 'deepseek', label: 'DeepSeek', color: '#555' },
+];
+
 export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEmergencyRevoke, userId }) => {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isAdding, setIsAdding] = useState(false);
   const [newKey, setNewKey] = useState({ provider: '', key: '', nickname: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
   const supabase = createClient();
 
-  const toggleVisibility = (id: string) => {
+  const toggleVisibility = (id: string) =>
     setShowKeys(prev => ({ ...prev, [id]: !prev[id] }));
-  };
 
   const handleAddKey = async () => {
-    if (!newKey.provider || !newKey.key) {
-      setError('Provider and key are required');
-      return;
-    }
-    
-    setLoading(true);
-    setError(null);
-    
+    if (!newKey.provider || !newKey.key) { setError('Provider and key are required'); return; }
+    setLoading(true); setError(null);
     try {
       const encrypted = btoa(newKey.key);
-
-      // Use RPC to bypass RLS - calls the SQL function you created
       const { error: rpcError } = await supabase.rpc('add_api_key', {
         p_user_id: userId,
         p_provider: newKey.provider,
         p_encrypted_key: encrypted,
         p_nickname: newKey.nickname || `${newKey.provider} Key`
       });
-
-      if (rpcError) {
-        console.error('RPC error:', rpcError);
-        throw new Error(rpcError.message);
-      }
-      
+      if (rpcError) throw new Error(rpcError.message);
       setIsAdding(false);
       setNewKey({ provider: '', key: '', nickname: '' });
       onKeysChange();
     } catch (err: any) {
-      console.error('Error adding key:', err);
       setError(err.message || 'Failed to add key');
     } finally {
       setLoading(false);
@@ -74,9 +58,7 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
       const { error } = await supabase.from('api_keys').delete().eq('id', id);
       if (error) throw error;
       onKeysChange();
-    } catch (error) {
-      console.error('Error deleting key:', error);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const maskKey = (key: string) => {
@@ -84,152 +66,220 @@ export const KeyVault: React.FC<KeyVaultProps> = ({ apiKeys, onKeysChange, onEme
     return key.slice(0, 4) + '••••••••••••' + key.slice(-4);
   };
 
-  const providers = [
-    { value: 'openai', label: 'OpenAI', color: 'bg-green-500' },
-    { value: 'anthropic', label: 'Anthropic', color: 'bg-orange-500' },
-    { value: 'google', label: 'Google AI', color: 'bg-blue-500' },
-    { value: 'groq', label: 'Groq', color: 'bg-purple-500' },
-    { value: 'nvidia', label: 'NVIDIA', color: 'bg-green-600' },
-    { value: 'deepseek', label: 'DeepSeek', color: 'bg-gray-500' },
-  ];
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: '#080808',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#f0f0f0', padding: '10px 14px',
+    fontFamily: "'DM Mono', monospace", fontSize: '13px',
+    outline: 'none', borderRadius: '4px', boxSizing: 'border-box',
+  };
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle, cursor: 'pointer',
+    appearance: 'none' as const,
+  };
 
   return (
     <>
-      <Card className="border-border bg-card shadow-xl h-full">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-xl flex items-center gap-2">
-                <Shield className="text-[#30D158]" size={20} />
+      {/* Card */}
+      <div style={{
+        background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.06)',
+        padding: '24px', height: '100%',
+      }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <Shield size={18} color="#30D158" />
+              <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '16px', fontWeight: 600, color: '#f0f0f0' }}>
                 Secure API Key Vault
-              </CardTitle>
-              <CardDescription>Store and manage your API keys securely</CardDescription>
+              </span>
             </div>
-            <Button 
-              variant="secondary" 
-              size="icon" 
-              className="rounded-full"
-              onClick={() => setIsAdding(true)}
-            >
-              <Plus size={18} />
-            </Button>
+            <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#444', letterSpacing: '0.05em' }}>
+              Store and manage your API keys securely
+            </p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {apiKeys.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Key size={48} className="mx-auto mb-4 opacity-20" />
-                <p>No API keys stored yet.</p>
-                <p className="text-sm">Add your first key to start tracking.</p>
-              </div>
-            ) : (
-              apiKeys.map((key) => (
-                <div key={key.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border group">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${providers.find(p => p.value === key.provider)?.color || 'bg-gray-400'}`} />
+          <button
+            onClick={() => setIsAdding(true)}
+            style={{
+              width: '36px', height: '36px', borderRadius: '50%',
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+              color: '#f0f0f0', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <Plus size={18} />
+          </button>
+        </div>
+
+        {/* Key list */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {apiKeys.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Key size={40} color="#333" style={{ margin: '0 auto 12px', display: 'block' }} />
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '12px', color: '#444' }}>No API keys stored yet.</p>
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#333', marginTop: '4px' }}>Click + to add your first key.</p>
+            </div>
+          ) : (
+            apiKeys.map(key => {
+              const providerColor = providers.find(p => p.value === key.provider)?.color || '#555';
+              return (
+                <div key={key.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '12px 14px', background: '#080808',
+                  border: '1px solid rgba(255,255,255,0.06)', borderRadius: '4px',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: providerColor, flexShrink: 0 }} />
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{key.nickname}</span>
-                        <Badge variant="secondary" className="text-[10px]">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '3px' }}>
+                        <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: '13px', fontWeight: 500, color: '#f0f0f0' }}>
+                          {key.nickname}
+                        </span>
+                        <span style={{
+                          fontFamily: "'DM Mono', monospace", fontSize: '9px',
+                          letterSpacing: '0.1em', color: providerColor,
+                          border: `1px solid ${providerColor}40`,
+                          padding: '2px 6px', textTransform: 'uppercase',
+                        }}>
                           {key.provider}
-                        </Badge>
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                        {maskKey(key.encrypted_key)}
-                        <button 
-                          onClick={() => toggleVisibility(key.id)}
-                          className="hover:text-foreground"
-                        >
-                          {showKeys[key.id] ? <EyeOff size={12} /> : <Eye size={12} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#444' }}>
+                          {showKeys[key.id] ? atob(key.encrypted_key) : maskKey(key.encrypted_key)}
+                        </span>
+                        <button onClick={() => toggleVisibility(key.id)}
+                          style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', padding: 0 }}>
+                          {showKeys[key.id] ? <EyeOff size={11} /> : <Eye size={11} />}
                         </button>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div style={{ display: 'flex', gap: '4px' }}>
                     {onEmergencyRevoke && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-8 w-8 text-[#FF453A] hover:text-[#FF453A] hover:bg-[#FF453A]/10"
-                        onClick={() => onEmergencyRevoke(key)}
+                      <button onClick={() => onEmergencyRevoke(key)}
                         title="Emergency Revoke"
-                      >
+                        style={{ background: 'none', border: 'none', color: '#FF453A', cursor: 'pointer', padding: '4px' }}>
                         <AlertTriangle size={14} />
-                      </Button>
+                      </button>
                     )}
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDeleteKey(key.id)}
-                    >
+                    <button onClick={() => handleDeleteKey(key.id)}
+                      style={{ background: 'none', border: 'none', color: '#444', cursor: 'pointer', padding: '4px' }}>
                       <Trash2 size={14} />
-                    </Button>
+                    </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              );
+            })
+          )}
+        </div>
+      </div>
 
-      <Dialog open={isAdding} onOpenChange={setIsAdding}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add API Key</DialogTitle>
-            <DialogDescription>
-              Your key will be encrypted before storage.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
+      {/* Modal overlay */}
+      {isAdding && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 1000,
+          background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => setIsAdding(false)}>
+          <div style={{
+            background: '#0f0f0f', border: '1px solid rgba(255,255,255,0.1)',
+            padding: '32px', width: '100%', maxWidth: '440px',
+            margin: '0 24px', position: 'relative',
+          }} onClick={e => e.stopPropagation()}>
+            {/* Modal header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <div>
+                <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: '28px', letterSpacing: '0.05em', color: '#f0f0f0', margin: 0 }}>
+                  ADD API KEY
+                </h2>
+                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: '11px', color: '#444', marginTop: '4px' }}>
+                  Encrypted before storage. Never transmitted.
+                </p>
+              </div>
+              <button onClick={() => setIsAdding(false)}
+                style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer' }}>
+                <X size={20} />
+              </button>
+            </div>
+
             {error && (
-              <div className="p-3 rounded bg-destructive/10 text-destructive text-sm">
+              <div style={{
+                padding: '10px 14px', marginBottom: '16px',
+                background: 'rgba(255,69,58,0.1)', border: '1px solid rgba(255,69,58,0.3)',
+                fontFamily: "'DM Mono', monospace", fontSize: '12px', color: '#FF453A',
+              }}>
                 {error}
               </div>
             )}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Provider</label>
-              <Select 
-                value={newKey.provider} 
-                onValueChange={(v) => setNewKey({...newKey, provider: v})}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select provider" />
-                </SelectTrigger>
-                <SelectContent>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <label style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: '8px' }}>
+                  Provider
+                </label>
+                <select
+                  value={newKey.provider}
+                  onChange={e => setNewKey({ ...newKey, provider: e.target.value })}
+                  style={selectStyle}
+                >
+                  <option value="">Select provider</option>
                   {providers.map(p => (
-                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    <option key={p.value} value={p.value}>{p.label}</option>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">API Key</label>
-              <Input 
-                type="password" 
-                placeholder="sk-..." 
-                value={newKey.key}
-                onChange={(e) => setNewKey({...newKey, key: e.target.value})}
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Nickname (optional)</label>
-              <Input 
-                placeholder="Production Key" 
-                value={newKey.nickname}
-                onChange={(e) => setNewKey({...newKey, nickname: e.target.value})}
-              />
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: '8px' }}>
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  placeholder="sk-..."
+                  value={newKey.key}
+                  onChange={e => setNewKey({ ...newKey, key: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontFamily: "'DM Mono', monospace", fontSize: '10px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#555', display: 'block', marginBottom: '8px' }}>
+                  Nickname <span style={{ color: '#333' }}>(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Production Key"
+                  value={newKey.nickname}
+                  onChange={e => setNewKey({ ...newKey, nickname: e.target.value })}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+                <button onClick={() => setIsAdding(false)} style={{
+                  flex: 1, padding: '12px',
+                  background: 'transparent', border: '1px solid rgba(255,255,255,0.1)',
+                  color: '#666', cursor: 'pointer',
+                  fontFamily: "'DM Mono', monospace", fontSize: '11px', letterSpacing: '0.1em',
+                }}>
+                  CANCEL
+                </button>
+                <button onClick={handleAddKey} disabled={loading} style={{
+                  flex: 1, padding: '12px',
+                  background: '#FF3B30', border: 'none',
+                  color: 'white', cursor: loading ? 'not-allowed' : 'pointer',
+                  fontFamily: "'DM Mono', monospace", fontSize: '11px', letterSpacing: '0.1em',
+                  opacity: loading ? 0.6 : 1,
+                }}>
+                  {loading ? 'SAVING...' : 'ADD KEY'}
+                </button>
+              </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsAdding(false)}>Cancel</Button>
-            <Button onClick={handleAddKey} disabled={loading}>
-              {loading ? 'Saving...' : 'Add Key'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </>
   );
 };
