@@ -18,6 +18,231 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { APIKey, UsageLog } from '@/types/supabase';
 
+// Inline styles object
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    minHeight: '100vh',
+    background: '#080808',
+    color: '#f0f0f0',
+    display: 'flex',
+    flexDirection: 'column',
+    fontFamily: "'DM Sans', sans-serif",
+  },
+  anomalyBanner: {
+    background: '#FF3B30',
+    color: 'white',
+    padding: '12px 16px',
+    animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+  },
+  anomalyInner: {
+    maxWidth: '1280px',
+    margin: '0 auto',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  anomalyContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+  },
+  anomalyText: {
+    fontWeight: 'bold',
+  },
+  killSwitchBtn: {
+    background: 'white',
+    color: '#FF3B30',
+    fontWeight: 'bold',
+    border: 'none',
+    padding: '6px 12px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  header: {
+    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    background: 'rgba(8,8,8,0.8)',
+    backdropFilter: 'blur(20px)',
+    position: 'sticky',
+    top: 0,
+    zIndex: 40,
+    padding: '0 16px',
+  },
+  headerInner: {
+    maxWidth: '1280px',
+    margin: '0 auto',
+    height: '64px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  logoSection: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '32px',
+  },
+  logo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+  },
+  logoIcon: {
+    background: '#0A84FF',
+    padding: '6px',
+    borderRadius: '8px',
+  },
+  logoText: {
+    fontSize: '18px',
+    fontWeight: 'bold',
+    letterSpacing: '0.05em',
+    fontFamily: "'Bebas Neue', sans-serif",
+  },
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+  },
+  badge: {
+    fontSize: '10px',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    color: '#666',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontFamily: "'DM Mono', monospace",
+    letterSpacing: '0.1em',
+  },
+  liveDot: {
+    width: '6px',
+    height: '6px',
+    background: '#30D158',
+    borderRadius: '50%',
+    animation: 'pulse 2s infinite',
+  },
+  testBadge: {
+    fontSize: '10px',
+    padding: '4px 8px',
+    background: 'rgba(255,255,255,0.1)',
+    borderRadius: '4px',
+  },
+  refreshBtn: {
+    padding: '6px 12px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'transparent',
+    color: '#f0f0f0',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+  },
+  ghostBtn: {
+    padding: '6px',
+    background: 'transparent',
+    border: 'none',
+    color: '#666',
+    cursor: 'pointer',
+  },
+  main: {
+    flex: 1,
+    maxWidth: '1280px',
+    margin: '0 auto',
+    padding: '32px 16px',
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '40px',
+  },
+  heroSection: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(12, 1fr)',
+    gap: '40px',
+    alignItems: 'center',
+  },
+  gaugeCol: {
+    gridColumn: 'span 5',
+    display: 'flex',
+    justifyContent: 'center',
+  },
+  statsCol: {
+    gridColumn: 'span 7',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '16px',
+  },
+  gridSection: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '24px',
+  },
+  sdkSection: {
+    marginTop: '8px',
+  },
+  sdkTitle: {
+    fontSize: '12px',
+    color: '#666',
+    textTransform: 'uppercase',
+    letterSpacing: '0.1em',
+    fontWeight: 600,
+    marginBottom: '12px',
+    paddingLeft: '4px',
+  },
+  tableSection: {
+    marginTop: '8px',
+  },
+  loadingContainer: {
+    minHeight: '100vh',
+    background: '#080808',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '16px',
+  },
+  loadingText: {
+    color: '#666',
+    fontSize: '14px',
+  },
+  dialogContent: {
+    border: '1px solid rgba(255,59,48,0.5)',
+    background: '#0f0f0f',
+  },
+  dialogTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#FF3B30',
+  },
+  keyPreview: {
+    background: 'rgba(255,255,255,0.05)',
+    padding: '12px',
+    borderRadius: '8px',
+    fontFamily: 'monospace',
+    fontSize: '12px',
+  },
+  dialogActions: {
+    display: 'flex',
+    gap: '12px',
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: '10px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    background: 'transparent',
+    color: '#f0f0f0',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+  revokeBtn: {
+    flex: 1,
+    padding: '10px',
+    background: '#FF3B30',
+    color: 'white',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+  },
+};
+
 function BurnRateDashboardInner() {
   const [userId, setUserId] = useState<string>('a8fccc8f-13c4-453c-8d10-3ecc77e9fa45');
   const [usageLogs, setUsageLogs] = useState<UsageLog[]>([]);
@@ -47,12 +272,10 @@ function BurnRateDashboardInner() {
     });
   }, [supabase.auth]);
 
-  // FORCE MOUNT
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // FETCH DATA IMMEDIATELY WHEN MOUNTED
   useEffect(() => {
     if (!mounted) return;
     
@@ -61,7 +284,7 @@ function BurnRateDashboardInner() {
     
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, [mounted, userId]); // Added userId dependency
+  }, [mounted, userId]);
 
   const fetchData = async () => {
     try {
@@ -98,7 +321,6 @@ function BurnRateDashboardInner() {
         console.error("Keys error:", keysError);
       } else {
         console.log("✅ Keys fetched:", keys?.length || 0);
-        console.log("📦 Keys:", keys);
       }
       
       setApiKeys(keys || []);
@@ -131,7 +353,6 @@ function BurnRateDashboardInner() {
     const weekCost = weekLogs.reduce((sum: number, log: UsageLog) => sum + log.cost, 0);
     const avgDailyCost = weekCost / 7;
 
-    // Rule 1: hourly spike over $2
     if (recentCost > 2.00) {
       alerts.push({
         id: 'spike-hour-' + now.getTime(),
@@ -141,7 +362,6 @@ function BurnRateDashboardInner() {
       });
     }
 
-    // Rule 2: today is 3x higher than daily average
     if (avgDailyCost > 0 && dayCost > avgDailyCost * 3) {
       alerts.push({
         id: 'spike-day-' + now.getTime(),
@@ -151,7 +371,6 @@ function BurnRateDashboardInner() {
       });
     }
 
-    // Rule 3: single provider burning over 80% of total
     const byCost: Record<string, number> = {};
     dayLogs.forEach((log: UsageLog) => { 
       byCost[log.provider] = (byCost[log.provider] || 0) + log.cost; 
@@ -167,7 +386,6 @@ function BurnRateDashboardInner() {
       }
     });
 
-    // Rule 4: on track to exceed monthly budget
     const daysInMonth = 30;
     const projectedMonthly = (dayCost / 1) * daysInMonth;
     if (projectedMonthly > monthlyBudget * 0.9 && dayCost > 0.5) {
@@ -197,7 +415,6 @@ function BurnRateDashboardInner() {
     }
   };
 
-  // FORCE RENDER AFTER 3 SECONDS EVEN IF LOADING
   useEffect(() => {
     const timer = setTimeout(() => {
       if (loading) {
@@ -210,22 +427,25 @@ function BurnRateDashboardInner() {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="animate-spin text-primary" size={32} />
-        <span className="ml-2 text-sm text-muted-foreground">Mounting...</span>
+      <div style={styles.loadingContainer}>
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#0A84FF' }} />
+        <span style={styles.loadingText}>Mounting...</span>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
-        <Loader2 className="animate-spin text-primary" size={32} />
-        <p className="text-sm text-muted-foreground">Loading spend data...</p>
-        <Button variant="outline" size="sm" onClick={() => { setLoading(false); fetchData(); }}>
-          <RefreshCw size={14} className="mr-2" />
+      <div style={styles.loadingContainer}>
+        <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#0A84FF' }} />
+        <p style={styles.loadingText}>Loading spend data...</p>
+        <button 
+          style={styles.refreshBtn}
+          onClick={() => { setLoading(false); fetchData(); }}
+        >
+          <RefreshCw size={14} style={{ marginRight: '8px' }} />
           Force Load
-        </Button>
+        </button>
       </div>
     );
   }
@@ -238,59 +458,59 @@ function BurnRateDashboardInner() {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div style={styles.container}>
       {anomalies.map(alert => (
-        <div key={alert.id} className="bg-[#FF453A] text-white px-4 py-3 animate-pulse">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-3">
+        <div key={alert.id} style={styles.anomalyBanner}>
+          <div style={styles.anomalyInner}>
+            <div style={styles.anomalyContent}>
               <ShieldAlert size={20} />
-              <span className="font-bold">{alert.message}</span>
+              <span style={styles.anomalyText}>{alert.message}</span>
             </div>
-            <Button 
-              variant="secondary" 
-              size="sm" 
+            <button 
+              style={styles.killSwitchBtn}
               onClick={() => setShowKillSwitch(true)}
-              className="bg-white text-[#FF453A] hover:bg-white/90 font-bold"
             >
               EMERGENCY KILL SWITCH
-            </Button>
+            </button>
           </div>
         </div>
       ))}
 
       <AlertBanner percentage={percentage} />
 
-      <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2">
-              <div className="bg-primary p-1.5 rounded-lg">
-                <Flame className="text-white" size={20} />
+      <header style={styles.header}>
+        <div style={styles.headerInner}>
+          <div style={styles.logoSection}>
+            <div style={styles.logo}>
+              <div style={styles.logoIcon}>
+                <Flame color="white" size={20} />
               </div>
-              <h1 className="font-headline font-bold text-lg tracking-tight">BURN RATE</h1>
+              <h1 style={styles.logoText}>BURN RATE</h1>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <Badge variant="outline" className="font-code text-[10px] hidden sm:flex gap-1 border-muted text-muted-foreground">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#30D158] animate-pulse" />
+          <div style={styles.headerActions}>
+            <span style={styles.badge}>
+              <span style={styles.liveDot}></span>
               LIVE TELEMETRY
-            </Badge>
-            <Badge variant="secondary" className="text-[10px]">TEST MODE</Badge>
-            <Button variant="outline" size="sm" onClick={() => window.location.reload()}>🔄 Refresh</Button>
-            <Button variant="ghost" size="sm" onClick={fetchData}>
+            </span>
+            <span style={styles.testBadge}>TEST MODE</span>
+            <button style={styles.refreshBtn} onClick={() => window.location.reload()}>
+              🔄 Refresh
+            </button>
+            <button style={styles.ghostBtn} onClick={fetchData}>
               <RefreshCw size={14} />
-            </Button>
+            </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 py-8 w-full space-y-10">
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-5 flex justify-center">
+      <main style={styles.main}>
+        <section style={styles.heroSection}>
+          <div style={styles.gaugeCol}>
             <BurnGauge percentage={percentage} spent={spent} totalBudget={monthlyBudget} />
           </div>
           
-          <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div style={styles.statsCol}>
             <StatsCard 
               label="Monthly Burn Rate"
               value={`$${monthlyBurnRate.toFixed(2)}/hr`}
@@ -322,7 +542,7 @@ function BurnRateDashboardInner() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <section style={styles.gridSection}>
           <KeyVault 
             apiKeys={apiKeys} 
             onKeysChange={fetchData}
@@ -335,10 +555,9 @@ function BurnRateDashboardInner() {
           <OptimizationEngine usageLogs={usageLogs} />
         </section>
 
-        {/* SDK Required Cards */}
         {apiKeys.filter((k: APIKey) => ['google','groq','nvidia','deepseek'].includes(k.provider)).length > 0 && (
-          <section className='space-y-3 mt-2'>
-            <p className='text-xs text-zinc-500 uppercase tracking-widest font-semibold px-1'>SDK-Tracked Providers</p>
+          <section style={styles.sdkSection}>
+            <p style={styles.sdkTitle}>SDK-Tracked Providers</p>
             {apiKeys
               .filter((k: APIKey) => ['google','groq','nvidia','deepseek'].includes(k.provider))
               .filter((k: APIKey, i: number, arr: APIKey[]) => arr.findIndex((x: APIKey) => x.provider === k.provider) === i)
@@ -352,45 +571,63 @@ function BurnRateDashboardInner() {
               ))}
           </section>
         )}
-        <section>
+        
+        <section style={styles.tableSection}>
           <MultiProviderTable usageLogs={usageLogs} />
         </section>
       </main>
 
       <Dialog open={showKillSwitch} onOpenChange={setShowKillSwitch}>
-        <DialogContent className="border-[#FF453A]/50">
+        <DialogContent style={styles.dialogContent}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-[#FF453A]">
+            <DialogTitle style={styles.dialogTitle}>
               <AlertTriangle size={20} />
               EMERGENCY KEY REVOCATION
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription style={{ color: '#666' }}>
               This will permanently delete the API key. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 pt-4">
+          <div style={{ paddingTop: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {keyToRevoke && (
-              <div className="bg-muted p-3 rounded-lg font-mono text-sm">
+              <div style={styles.keyPreview}>
                 <div>Provider: {keyToRevoke.provider}</div>
                 <div>Key: {keyToRevoke.encrypted_key?.slice(0, 10)}...</div>
               </div>
             )}
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setShowKillSwitch(false)} className="flex-1">
+            <div style={styles.dialogActions}>
+              <button 
+                style={styles.cancelBtn}
+                onClick={() => setShowKillSwitch(false)}
+              >
                 Cancel
-              </Button>
-              <Button 
-                variant="destructive"
+              </button>
+              <button 
+                style={{
+                  ...styles.revokeBtn,
+                  opacity: revoking ? 0.5 : 1,
+                  cursor: revoking ? 'not-allowed' : 'pointer',
+                }}
                 onClick={() => handleEmergencyRevoke(keyToRevoke)}
                 disabled={revoking}
-                className="flex-1 bg-[#FF453A] hover:bg-[#FF453A]/90"
               >
                 {revoking ? 'Revoking...' : 'REVOKE KEY'}
-              </Button>
+              </button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      <style jsx global>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
