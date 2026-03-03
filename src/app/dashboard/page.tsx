@@ -426,7 +426,7 @@ function BurnRateDashboardInner() {
     return () => clearTimeout(timer);
   }, [loading]);
 
-  if (!mounted) {
+  if (!mounted || !userId) {
     return (
       <div style={styles.loadingContainer}>
         <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#0A84FF' }} />
