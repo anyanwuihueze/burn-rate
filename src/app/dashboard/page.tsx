@@ -266,14 +266,13 @@ function BurnRateDashboardInner() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user?.id) {
-        setUserId(data.user.id);
+      if (!data.user) {
+        window.location.href = '/auth/login';
+        return;
       }
+      setUserId(data.user.id);
+      setMounted(true);
     });
-  }, [supabase.auth]);
-
-  useEffect(() => {
-    setMounted(true);
   }, []);
 
   useEffect(() => {
