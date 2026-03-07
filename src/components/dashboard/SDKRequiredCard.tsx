@@ -6,6 +6,7 @@ interface SDKRequiredCardProps {
   provider: string;
   supabaseUrl: string;
   supabaseAnonKey: string;
+  userId: string;
 }
 
 const PROVIDER_MODELS: Record<string, string> = {
@@ -31,7 +32,7 @@ const PROVIDER_REVOKE_LINKS: Record<string, string> = {
   openai:    'https://platform.openai.com/api-keys',
 };
 
-export const SDKRequiredCard: React.FC<SDKRequiredCardProps> = ({ provider, supabaseUrl, supabaseAnonKey }) => {
+export const SDKRequiredCard: React.FC<SDKRequiredCardProps> = ({ provider, supabaseUrl, supabaseAnonKey, userId }) => {
   const [expanded, setExpanded] = useState(false);
   const [copiedStep, setCopiedStep] = useState<number | null>(null);
 
@@ -52,7 +53,7 @@ export const SDKRequiredCard: React.FC<SDKRequiredCardProps> = ({ provider, supa
     "const tracker = new BurnRateTracker({",
     "  supabaseUrl: '" + supabaseUrl + "',",
     "  supabaseAnonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,",
-    "  userId: user.id,",
+    "  userId: '" + userId + "',",
     "  monthlyBudget: 200,",
     "});",
     "",
@@ -67,11 +68,10 @@ export const SDKRequiredCard: React.FC<SDKRequiredCardProps> = ({ provider, supa
   const steps = [
     {
       n: 1,
-      title: 'Copy burnrate-sdk.ts into your project',
-      desc: 'The SDK lives at src/lib/burnrate-sdk.ts in your Burn Rate project. Copy it into the app you want to track.',
-      code: 'cp path/to/burnrate/src/lib/burnrate-sdk.ts your-app/src/lib/burnrate-sdk.ts',
-    },
-    {
+      title: 'Download the SDK',
+      desc: 'Run this in your project root. One file, zero config.',
+      code: 'curl -o src/lib/burnrate-sdk.ts https://burn-rate-zeta.vercel.app/sdk',
+    }, {
       n: 2,
       title: 'Wrap your ' + providerName + ' API calls',
       desc: 'Your API key stays in your code. We only receive token counts and cost â€” nothing else.',

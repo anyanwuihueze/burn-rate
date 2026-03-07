@@ -10,6 +10,9 @@ import { OptimizationEngine } from '@/components/dashboard/OptimizationEngine';
 import { KeyVault } from '@/components/vault/KeyVault';
 import { SDKRequiredCard } from '@/components/dashboard/SDKRequiredCard';
 import { AlertBanner } from '@/components/dashboard/AlertBanner';
+import { FeatureCostBreakdown } from '@/components/dashboard/FeatureCostBreakdown';
+import { ModelComparisonCard } from '@/components/dashboard/ModelComparisonCard';
+import { DailySpendChart } from '@/components/dashboard/DailySpendChart';
 import { 
   Zap, Flame, Calendar, Cpu, ShieldAlert, AlertTriangle, Loader2, RefreshCw
 } from 'lucide-react';
@@ -567,11 +570,13 @@ function BurnRateDashboardInner() {
                   provider={k.provider}
                   supabaseUrl={supabaseUrl}
                   supabaseAnonKey={supabaseAnonKey}
+                  userId={userId}
                 />
               ))}
           </section>
         )}
         
+        <ApiKeySection userId={userId} />
         <section style={styles.tableSection}>
           <MultiProviderTable usageLogs={usageLogs} />
         </section>
