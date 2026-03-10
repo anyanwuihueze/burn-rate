@@ -576,7 +576,7 @@ function BurnRateDashboardInner() {
           </section>
         )}
         
-        <ApiKeySection userId={userId} />
+        {/*<ApiKeySection userId={userId} />*/}
         <section style={styles.tableSection}>
           <MultiProviderTable usageLogs={usageLogs} />
         </section>
