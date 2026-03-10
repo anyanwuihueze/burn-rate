@@ -1,6 +1,6 @@
 {
   "name": "burnrate-init",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "description": "Zero-friction AI API tracking",
   "bin": {
     "burnrate-init": "./bin/burnrate-init.js"
