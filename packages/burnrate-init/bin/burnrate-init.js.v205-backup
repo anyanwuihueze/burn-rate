@@ -223,7 +223,7 @@ function runTypeCheck(cwd) {
 }
 
 // FIXED SDK v2.0.6 - Correct UUID extraction for br_live_UUID_TIMESTAMP_HASH format
-const SDK_CONTENT = `// BurnRate SDK v2.0.6 — auto-installed by burnrate-init
+const SDK_CONTENT = \`// BurnRate SDK v2.0.6 — auto-installed by burnrate-init
 // Docs: https://burn-rate-zeta.vercel.app
 
 const SUPABASE_URL = 'https://thbpkpynvoueniovmdop.supabase.co';
@@ -273,14 +273,14 @@ export class BurnRateTracker {
   }
   async stop() { clearInterval(this.timer); await this.flush(); }
 }
-`;
+\`;
 
 function writeEnv(cwd, apiKey) {
   const envPath = path.join(cwd, '.env.local');
   let existing = '';
   try { existing = fs.readFileSync(envPath, 'utf-8'); } catch {}
   if (existing.includes('BURNRATE_API_KEY')) return;
-  fs.appendFileSync(envPath, `\nBURNRATE_API_KEY=${apiKey}\n`);
+  fs.appendFileSync(envPath, \`\nBURNRATE_API_KEY=\${apiKey}\n\`);
 }
 
 function findLibDir(cwd) {
@@ -312,9 +312,9 @@ async function downloadSdk(sdkPath) {
 
 async function main() {
   const cwd = process.cwd();
-  console.log('\n' + bold(cyan('⚡ BurnRate Init')) + gray(' v2.0.6'));
-  console.log(gray('Zero-friction AI API tracking — auto-patches your codebase') + '\n');
-  console.log(white('Get your free API key at: ') + cyan('https://burn-rate-zeta.vercel.app') + '\n');
+  console.log('\\n' + bold(cyan('⚡ BurnRate Init')) + gray(' v2.0.6'));
+  console.log(gray('Zero-friction AI API tracking — auto-patches your codebase') + '\\n');
+  console.log(white('Get your free API key at: ') + cyan('https://burn-rate-zeta.vercel.app') + '\\n');
 
   let apiKey = await ask(white('? Paste your BurnRate API key: '));
   while (!apiKey || !apiKey.startsWith('br_live_')) {
@@ -327,9 +327,9 @@ async function main() {
   scanSpin.stop();
 
   if (!matches.length) {
-    console.log(yellow('\n⚠  No untracked AI calls found.'));
+    console.log(yellow('\\n⚠  No untracked AI calls found.'));
     console.log(gray('   Scanned for: Groq, OpenAI, Google Gemini, Anthropic'));
-    console.log(gray('   Make sure you are running this from your project root.\n'));
+    console.log(gray('   Make sure you are running this from your project root.\\n'));
     
     // Even if no new files to patch, update SDK to v2.0.6 if it exists
     const sdkDir = findLibDir(cwd);
@@ -339,7 +339,7 @@ async function main() {
       if (existingSdk.includes('without.length >= 36')) {
         console.log(yellow('   Detected old SDK with UUID bug. Updating to v2.0.6...'));
         fs.writeFileSync(sdkPath, SDK_CONTENT);
-        console.log(green('   ✓ SDK updated with correct UUID extraction\n'));
+        console.log(green('   ✓ SDK updated with correct UUID extraction\\n'));
       }
     }
     process.exit(0);
@@ -350,18 +350,18 @@ async function main() {
 
   const counts = {};
   for (const m of matches) counts[m.provider] = (counts[m.provider] || 0) + 1;
-  console.log(green(`\n✓ Found ${matches.length} AI call${matches.length !== 1 ? 's' : ''} across ${byFile.size} file${byFile.size !== 1 ? 's' : ''}:\n`));
+  console.log(green(\`\\n✓ Found \${matches.length} AI call\${matches.length !== 1 ? 's' : ''} across \${byFile.size} file\${byFile.size !== 1 ? 's' : ''}:\\n\`));
 
   const icons = { groq: '🟠', openai: '🟢', google: '🔵', anthropic: '🟣' };
-  for (const [p, n] of Object.entries(counts)) console.log(`  ${icons[p] || '⚪'}  ${white(p.padEnd(12))} ${gray(n + ' call' + (n !== 1 ? 's' : ''))}`);
+  for (const [p, n] of Object.entries(counts)) console.log(\`  \${icons[p] || '⚪'}  \${white(p.padEnd(12))} \${gray(n + ' call' + (n !== 1 ? 's' : ''))}\`);
   console.log('');
   for (const [file, ms] of byFile) {
-    console.log(`  ${cyan(rel(cwd, file))}`);
-    for (const m of ms) console.log(`    ${gray('line ' + m.line + ':')} ${gray(m.originalLine.trim().slice(0, 65))}`);
+    console.log(\`  \${cyan(rel(cwd, file))}\`);
+    for (const m of ms) console.log(\`    \${gray('line ' + m.line + ':')} \${gray(m.originalLine.trim().slice(0, 65))}\`);
   }
 
-  const ok = await confirm(`\n${white('Patch all ' + matches.length + ' call' + (matches.length !== 1 ? 's' : '') + ' with BurnRate tracking?')}`);
-  if (!ok) { console.log(gray('\nNo changes made.\n')); process.exit(0); }
+  const ok = await confirm(\`\\n\${white('Patch all ' + matches.length + ' call' + (matches.length !== 1 ? 's' : '') + ' with BurnRate tracking?')}\`);
+  if (!ok) { console.log(gray('\\nNo changes made.\\n')); process.exit(0); }
 
   const featureMap = await collectFeatureTags(byFile, cwd);
 
@@ -371,7 +371,7 @@ async function main() {
   
   // Always write v2.0.6 SDK with correct UUID extraction
   fs.writeFileSync(sdkPath, SDK_CONTENT);
-  sdkSpin.succeed(green('SDK v2.0.6 ready') + gray(` → ${rel(cwd, sdkPath)} (UUID bug fixed)`));
+  sdkSpin.succeed(green('SDK v2.0.6 ready') + gray(\` → \${rel(cwd, sdkPath)} (UUID bug fixed)\`));
 
   writeEnv(cwd, apiKey);
   console.log(green('✓ BURNRATE_API_KEY') + gray(' added to .env.local'));
@@ -389,8 +389,8 @@ async function main() {
   const total = good.reduce((s, r) => s + r.count, 0);
 
   console.log('');
-  for (const r of good) console.log(green('✓ Patched') + gray(` ${rel(cwd, r.file)} (${r.count} call${r.count !== 1 ? 's' : ''})`) + ` ${magenta('→ ' + r.feature)}`);
-  for (const r of bad)  console.log(red('✗ Failed')  + gray(` ${rel(cwd, r.file)}: ${r.error}`));
+  for (const r of good) console.log(green('✓ Patched') + gray(\` \${rel(cwd, r.file)} (\${r.count} call\${r.count !== 1 ? 's' : ''})\`) + \` \${magenta('→ ' + r.feature)}\`);
+  for (const r of bad)  console.log(red('✗ Failed')  + gray(\` \${rel(cwd, r.file)}: \${r.error}\`));
 
   const checkSpin = spinner('Validating TypeScript...');
   const check = runTypeCheck(cwd);
@@ -401,18 +401,18 @@ async function main() {
   }
   checkSpin.succeed(green('TypeScript check passed — your build is safe'));
 
-  console.log('\n' + gray('─'.repeat(50)));
-  console.log(bold(green(`\n🚀 Done! ${total} call${total !== 1 ? 's' : ''} now tracked with feature tags.\n`)));
+  console.log('\\n' + gray('─'.repeat(50)));
+  console.log(bold(green(\`\\n🚀 Done! \${total} call\${total !== 1 ? 's' : ''} now tracked with feature tags.\\n\`)));
   if (good.length > 0) {
     const ex = good[0];
     console.log(gray('  Before: await groq.chat.completions.create({ ... })'));
-    console.log(white(`  After:  await __burnrateTracker.trackGroq('model', () => groq.chat.completions.create({ ... }), '${ex.feature}')\n`));
+    console.log(white(\`  After:  await __burnrateTracker.trackGroq('model', () => groq.chat.completions.create({ ... }), '\${ex.feature}')\\n\`));
   }
   console.log(white('Next steps:'));
   console.log(gray('  1. Run your app and trigger any AI call'));
   console.log(gray('  2. Watch costs at ') + cyan('https://burn-rate-zeta.vercel.app'));
   console.log(gray('  3. Backups saved as .burnrate-backup — delete when happy'));
-  console.log(gray('  4. To undo: ') + white('git checkout -- .') + '\n');
+  console.log(gray('  4. To undo: ') + white('git checkout -- .') + '\\n');
 }
 
-main().catch(err => { console.error(red('\n✗ ' + err.message)); process.exit(1); });
+main().catch(err => { console.error(red('\\n✗ ' + err.message)); process.exit(1); });

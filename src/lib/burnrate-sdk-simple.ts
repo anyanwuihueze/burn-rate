@@ -1,5 +1,5 @@
 // BurnRate SDK - Simplified Option B
-// Usage: new BurnRateTracker({ apiKey: process.env.BURNRATE_API_KEY })
+// Usage: new BurnRateTracker({ apiKey: process.env.BURNRATE_API_KEY || 'br_live_a8fccc8f-13c4-453c-8d10-3ecc77e9fa45_1772718737561_4f8ba36b5b1f' })
 
 interface BurnRateConfig {
   apiKey: string;  // Just ONE thing needed
