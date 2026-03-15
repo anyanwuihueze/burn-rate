@@ -68,9 +68,9 @@ export const SDKRequiredCard: React.FC<SDKRequiredCardProps> = ({ provider, supa
   const steps = [
     {
       n: 1,
-      title: 'Download the SDK',
-      desc: 'Run this in your project root. One file, zero config.',
-      code: 'curl -o src/lib/burnrate-sdk.ts https://burn-rate-zeta.vercel.app/sdk',
+      title: 'Auto-install BurnRate',
+      desc: 'Run this from your project root. It scans your codebase, wraps all AI calls, and sets up tracking automatically.',
+      code: 'npx burnrate-init@2.1.3',
     }, {
       n: 2,
       title: 'Wrap your ' + providerName + ' API calls',

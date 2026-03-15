@@ -14,8 +14,8 @@ export class BurnRateTracker {
   timer: any;
 
   constructor(config: { apiKey: string; monthlyBudget?: number }) {
-    const without = (config.apiKey || '').replace(/^br_live_/, '');
-    this.userId = without.length >= 36 ? without.substring(0, 36) : without;
+    const match = (config.apiKey || '').match(/br_live_([a-f0-9-]{36})/i);
+    this.userId = match ? match[1] : '';
     this.budget = config.monthlyBudget || 200;
     this.queue = [];
     this.timer = setInterval(() => this.flush(), 5000);

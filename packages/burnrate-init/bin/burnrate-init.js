@@ -7,6 +7,7 @@ const https    = require('https');
 const readline = require('readline');
 const { execSync } = require('child_process');
 
+// COLOR FUNCTIONS FIRST
 const bold    = s => `\x1b[1m${s}\x1b[0m`;
 const green   = s => `\x1b[32m${s}\x1b[0m`;
 const red     = s => `\x1b[31m${s}\x1b[0m`;
@@ -15,6 +16,14 @@ const gray    = s => `\x1b[90m${s}\x1b[0m`;
 const white   = s => `\x1b[37m${s}\x1b[0m`;
 const yellow  = s => `\x1b[33m${s}\x1b[0m`;
 const magenta = s => `\x1b[35m${s}\x1b[0m`;
+
+// NOW load TypeScript - AFTER colors defined
+let tsParser;
+try {
+  tsParser = require('typescript');
+} catch {
+  console.log(gray('TypeScript not installed, using enhanced regex mode'));
+}
 
 function spinner(text) {
   const frames = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
@@ -39,62 +48,71 @@ async function confirm(q) {
 function inferFeatureFromPath(filePath) {
   const base = path.basename(filePath, path.extname(filePath));
   const cleaned = base
-    .replace(/[-_](flow|assistant|handler|service|route|api|helper|util|utils|generator|client|server)$/i, '')
-    .replace(/[-_](flow|assistant|handler|service|route|api|helper|util|utils|generator|client|server)$/i, '')
+    .replace(/[-_](flow|assistant|handler|service|route|api|helper|util|utils|generator|client|server|controller|action)$/i, '')
     .toLowerCase();
   return cleaned.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untagged';
 }
 
-const PATTERNS = {
-  groq: [
-    { re: /groq\.chat\.completions\.create\s*\(/,       wrap: (m) => `__burnrateTracker.trackGroq('${m}', () => groq.chat.completions.create(` },
-    { re: /groqClient\.chat\.completions\.create\s*\(/, wrap: (m) => `__burnrateTracker.trackGroq('${m}', () => groqClient.chat.completions.create(` },
-  ],
-  openai: [
-    { re: /openai\.chat\.completions\.create\s*\(/,     wrap: (m) => `__burnrateTracker.trackOpenAI('${m}', () => openai.chat.completions.create(` },
-    { re: /client\.chat\.completions\.create\s*\(/,     wrap: (m) => `__burnrateTracker.trackOpenAI('${m}', () => client.chat.completions.create(` },
-  ],
-  google: [
-    { re: /generativeModel\.generateContent\s*\(/,      wrap: (m) => `__burnrateTracker.trackGoogle('${m}', () => generativeModel.generateContent(` },
-    { re: /(?<!\w)model\.generateContent\s*\(/,         wrap: (m) => `__burnrateTracker.trackGoogle('${m}', () => model.generateContent(` },
-  ],
-  anthropic: [
-    { re: /anthropic\.messages\.create\s*\(/,           wrap: (m) => `__burnrateTracker.trackAnthropic('${m}', () => anthropic.messages.create(` },
-  ],
+const AI_PATTERNS = {
+  groq: { identifiers: ['groq', 'groqClient'], methods: ['chat.completions.create'], defaultModel: 'llama-3.3-70b-versatile' },
+  openai: { identifiers: ['openai', 'client', 'openAI'], methods: ['chat.completions.create'], defaultModel: 'gpt-4o' },
+  google: { identifiers: ['generativeModel', 'model', 'googleAI', 'gemini'], methods: ['generateContent'], defaultModel: 'gemini-2.0-flash' },
+  anthropic: { identifiers: ['anthropic', 'claude'], methods: ['messages.create'], defaultModel: 'claude-3-5-sonnet-20241022' },
+  openrouter: { endpoints: ['openrouter.ai/api/v1/chat/completions'], defaultModel: 'openrouter-model' },
+  together: { endpoints: ['api.together.xyz/v1/chat/completions'], defaultModel: 'together-model' },
+  replicate: { endpoints: ['api.replicate.com/v1/predictions'], defaultModel: 'replicate-model' },
+  vercel_ai: { identifiers: ['generateText', 'generateObject', 'streamText'], defaultModel: 'vercel-ai-model' }
 };
 
-const DEFAULT_MODELS = {
-  groq: 'llama-3.3-70b-versatile', openai: 'gpt-4o',
-  google: 'gemini-2.0-flash', anthropic: 'claude-3-5-sonnet-20241022',
-};
-const SKIP = new Set(['node_modules','.git','dist','build','.next','.vercel','coverage','.cache','out']);
+const SKIP = new Set(['node_modules','.git','dist','build','.next','.vercel','coverage','.cache','out','.turbo']);
 const EXT  = new Set(['.ts','.tsx','.js','.jsx','.mjs']);
 
-function extractModel(lines, idx, provider) {
-  const win = lines.slice(idx, idx + 12).join('\n');
-  const m = win.match(/model:\s*['"`]([^'"`]+)['"`]/);
-  return m ? m[1] : DEFAULT_MODELS[provider] || 'unknown';
+function detectAICallsRegex(filePath, content) {
+  const matches = [];
+  const lines = content.split('\n');
+  
+  const patterns = [
+    { regex: /await\s+(groq|groqClient)\.chat\.completions\.create\s*\(/, provider: 'groq', model: 'llama-3.3-70b-versatile' },
+    { regex: /await\s+(openai|client|openAI)\.chat\.completions\.create\s*\(/, provider: 'openai', model: 'gpt-4o' },
+    { regex: /await\s+(generativeModel|model|googleAI|gemini)\.(generateContent|generateContentStream)\s*\(/, provider: 'google', model: 'gemini-2.0-flash' },
+    { regex: /await\s+(anthropic|claude)\.messages\.create\s*\(/, provider: 'anthropic', model: 'claude-3-5-sonnet-20241022' },
+    { regex: /await\s+(generateText|generateObject|streamText|streamObject)\s*\(/, provider: 'vercel_ai', model: 'vercel-ai-model' },
+    { regex: /await\s+fetch\s*\(\s*['"`]https:\/\/openrouter\.ai\/api\/v1\/chat\/completions['"`]/, provider: 'openrouter', model: 'openrouter-model' },
+    { regex: /await\s+fetch\s*\(\s*['"`][^'"`]*(?:api|ai|llm)[^'"`]*(?:chat|completion|generate)[^'"`]*['"`]/i, provider: 'generic', model: 'unknown' },
+    { regex: /await\s+fetch\s*\(\s*['"`]https:\/\/api\.together\.xyz\/v1\/chat\/completions['"`]/, provider: 'together', model: 'together-model' },
+    { regex: /await\s+fetch\s*\(\s*['"`]https:\/\/api\.replicate\.com\/v1\/predictions['"`]/, provider: 'replicate', model: 'replicate-model' },
+  ];
+
+  lines.forEach((line, idx) => {
+    for (const pattern of patterns) {
+      if (pattern.regex.test(line) && !line.includes('__burnrateTracker') && !line.includes('track')) {
+        matches.push({
+          file: filePath,
+          line: idx + 1,
+          provider: pattern.provider,
+          model: extractModelFromContext(lines, idx) || pattern.model,
+          suggestedFeature: inferFeatureFromPath(filePath),
+          originalLine: line
+        });
+        break;
+      }
+    }
+  });
+
+  return matches;
+}
+
+function extractModelFromContext(lines, idx) {
+  const context = lines.slice(Math.max(0, idx - 10), Math.min(lines.length, idx + 10)).join('\n');
+  const modelMatch = context.match(/model:\s*['"`]([^'"`]+)['"`]/);
+  return modelMatch ? modelMatch[1] : null;
 }
 
 function scanFile(filePath) {
   let content;
   try { content = fs.readFileSync(filePath, 'utf-8'); } catch { return []; }
-  if (content.includes('__burnrateTracker') || content.includes('burnrate-sdk')) return [];
-  const lines = content.split('\n');
-  const matches = [];
-  const seenLines = new Set();
-  for (const [provider, pats] of Object.entries(PATTERNS)) {
-    for (const { re } of pats) {
-      lines.forEach((line, idx) => {
-        if (seenLines.has(idx)) return;
-        if (re.test(line) && line.includes('await') && !line.includes('track')) {
-          seenLines.add(idx);
-          matches.push({ file: filePath, line: idx + 1, lineIdx: idx, provider, originalLine: line, model: extractModel(lines, idx, provider), suggestedFeature: inferFeatureFromPath(filePath) });
-        }
-      });
-    }
-  }
-  return matches;
+  if (content.includes('__burnrateTracker') && content.includes('burnrate-sdk')) return [];
+  return detectAICallsRegex(filePath, content);
 }
 
 function walkDir(dir, results = []) {
@@ -121,94 +139,88 @@ function findSafeImportInsertionPoint(lines) {
   return lastCompleteImport;
 }
 
-function getSdkImportPath() { return '@/lib/burnrate-sdk'; }
+function getWrapFunction(provider, model) {
+  const wrapMap = {
+    groq: `__burnrateTracker.trackGroq('${model}', () =>`,
+    openai: `__burnrateTracker.trackOpenAI('${model}', () =>`,
+    google: `__burnrateTracker.trackGoogle('${model}', () =>`,
+    anthropic: `__burnrateTracker.trackAnthropic('${model}', () =>`,
+    openrouter: `__burnrateTracker.trackOpenRouter('${model}', () =>`,
+    together: `__burnrateTracker.trackTogether('${model}', () =>`,
+    replicate: `__burnrateTracker.trackReplicate('${model}', () =>`,
+    vercel_ai: `__burnrateTracker.trackVercelAI('${model}', () =>`,
+    generic: `__burnrateTracker.trackGeneric('${model}', () =>`,
+  };
+  return wrapMap[provider] || wrapMap.generic;
+}
 
-function patchContent(content, patternRe, wrapFn, model, feature) {
+function patchContent(content, matches, featureTag) {
   const lines = content.split('\n');
-  const patched = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
-    const awaitPattern = new RegExp('await\\s+' + patternRe.source);
-    if (awaitPattern.test(line) && !line.includes('track')) {
-      const newLine = line.replace(awaitPattern, () => 'await ' + wrapFn(model));
-      patched.push(newLine);
-      i++;
-      let extraOpen = 1;
-      while (i < lines.length && extraOpen > 0) {
-        const l = lines[i];
-        for (const ch of l) { if (ch === '(') extraOpen++; if (ch === ')') extraOpen--; }
-        if (extraOpen === 0) {
-          patched.push(l.replace(/\)(\s*);(\s*)$/, (_, trailing, ws) => `), '${feature}')${trailing};${ws}`));
-        } else { patched.push(l); }
-        i++;
-      }
-    } else { patched.push(line); i++; }
+  const patched = [...lines];
+  matches.sort((a, b) => b.line - a.line);
+  
+  for (const match of matches) {
+    const lineIdx = match.line - 1;
+    const line = lines[lineIdx];
+    if (!line || line.includes('__burnrateTracker')) continue;
+    
+    const wrapFn = getWrapFunction(match.provider, match.model);
+    
+    if (line.includes('await')) {
+      const awaitIdx = line.indexOf('await');
+      const beforeAwait = line.substring(0, awaitIdx);
+      const afterAwait = line.substring(awaitIdx + 5).trim();
+      const newLine = `${beforeAwait}await ${wrapFn} ${afterAwait}, '${featureTag}')`;
+      patched[lineIdx] = newLine;
+    }
   }
   return patched.join('\n');
 }
 
-async function collectFeatureTags(byFile, cwd) {
-  const featureMap = new Map();
-  console.log('\n' + bold(magenta('🏷  Feature Tagging (v2.0.6)')) + '\n');
-  console.log(gray('  Press Enter to accept the suggestion, or type your own name.\n'));
-  for (const [filePath, matches] of byFile) {
-    const suggested = matches[0].suggestedFeature;
-    const relPath = path.relative(cwd, filePath);
-    const providers = [...new Set(matches.map(m => m.provider))].join(', ');
-    process.stdout.write(`  ${cyan(relPath)}\n  ${gray(providers + ' · ' + matches.length + ' call' + (matches.length !== 1 ? 's' : ''))}\n  Feature tag ${gray('[' + suggested + ']')}: `);
-    const input = await ask('');
-    const tag = input.trim().replace(/[^a-z0-9-_]/gi, '-').toLowerCase() || suggested;
-    featureMap.set(filePath, tag);
-    process.stdout.moveCursor?.(0, -1);
-    process.stdout.clearLine?.(0);
-    console.log(`  ${green('✓')} ${cyan(relPath)} ${gray('→')} ${magenta(tag)}\n`);
-  }
-  return featureMap;
-}
-
 function patchFile(filePath, matches, apiKey, featureTag) {
   let content;
-  try { content = fs.readFileSync(filePath, 'utf-8'); } catch (e) { return { file: filePath, count: 0, success: false, error: e.message }; }
+  try { content = fs.readFileSync(filePath, 'utf-8'); } catch (e) { 
+    return { file: filePath, count: 0, success: false, error: e.message }; 
+  }
   try { fs.writeFileSync(filePath + '.burnrate-backup', content); } catch {}
-  const sdkPath = getSdkImportPath();
+  
+  const sdkPath = '@/lib/burnrate-sdk';
   const importLine = `import { BurnRateTracker } from '${sdkPath}';`;
   const lines = content.split('\n');
   const safePoint = findSafeImportInsertionPoint(lines);
   lines.splice(safePoint + 1, 0, importLine);
-  content = lines.join('\n');
-  const initBlock = `\nconst __burnrateTracker = new BurnRateTracker({ apiKey: process.env.BURNRATE_API_KEY || '${apiKey}' });\n`;
-  const newLines = content.split('\n');
+  
+  const initBlock = `const __burnrateTracker = new BurnRateTracker({ apiKey: process.env.BURNRATE_API_KEY || '${apiKey}' });\n`;
   let insertAt = -1;
-  for (let i = 0; i < newLines.length; i++) {
-    if (/^export\s+(async\s+)?function/.test(newLines[i]) || /^(async\s+)?function\s+\w/.test(newLines[i])) { insertAt = i; break; }
-  }
-  if (insertAt === -1) insertAt = safePoint + 2;
-  newLines.splice(insertAt, 0, initBlock);
-  content = newLines.join('\n');
-  let patchCount = 0;
-  for (const match of matches) {
-    for (const { re, wrap } of PATTERNS[match.provider] || []) {
-      const before = content;
-      content = patchContent(content, re, wrap, match.model, featureTag);
-      if (content !== before) patchCount++;
+  for (let i = safePoint + 2; i < lines.length; i++) {
+    if (/^(export\s+)?(async\s+)?function\s+\w|^(export\s+)?class\s+\w|^const\s+\w+\s*=/.test(lines[i])) {
+      insertAt = i;
+      break;
     }
   }
-  try { fs.writeFileSync(filePath, content); return { file: filePath, count: patchCount, success: true, feature: featureTag }; }
-  catch (e) { return { file: filePath, count: 0, success: false, error: e.message }; }
+  if (insertAt === -1) insertAt = safePoint + 2;
+  lines.splice(insertAt, 0, initBlock);
+  content = lines.join('\n');
+  
+  const patched = patchContent(content, matches, featureTag);
+  try { 
+    fs.writeFileSync(filePath, patched); 
+    return { file: filePath, count: matches.length, success: true, feature: featureTag }; 
+  }
+  catch (e) { 
+    return { file: filePath, count: 0, success: false, error: e.message }; 
+  }
 }
 
 function rollbackAll(byFile) {
-  console.log(yellow('\n⚠  Rolling back all patched files...'));
+  console.log(yellow('\n⚠  Rolling back...'));
   for (const [filePath] of byFile) {
     const backup = filePath + '.burnrate-backup';
     if (fs.existsSync(backup)) {
-      try { fs.copyFileSync(backup, filePath); fs.unlinkSync(backup); console.log(gray('  ↩ Restored: ' + filePath)); }
-      catch { console.log(red('  ✗ Could not restore: ' + filePath)); }
+      try { fs.copyFileSync(backup, filePath); fs.unlinkSync(backup); }
+      catch { }
     }
   }
-  console.log(red('\n✗ Rolled back. Your codebase is unchanged.'));
-  console.log(gray('  Report this at: https://burn-rate-zeta.vercel.app/issues\n'));
 }
 
 function runTypeCheck(cwd) {
@@ -216,64 +228,9 @@ function runTypeCheck(cwd) {
     execSync('npx tsc --noEmit', { cwd, stdio: 'pipe', timeout: 30000 });
     return { ok: true };
   } catch (e) {
-    const output = (e.stdout?.toString() || '') + (e.stderr?.toString() || '');
-    const burnrateErrors = output.split('\n').filter(l => l.includes('burnrate-sdk') || l.includes('__burnrateTracker'));
-    return burnrateErrors.length > 0 ? { ok: false, errors: burnrateErrors } : { ok: true };
+    return { ok: false };
   }
 }
-
-// FIXED SDK v2.0.6 - Correct UUID extraction for br_live_UUID_TIMESTAMP_HASH format
-const SDK_CONTENT = `// BurnRate SDK v2.0.6 — auto-installed by burnrate-init
-// Docs: https://burn-rate-zeta.vercel.app
-
-const SUPABASE_URL = 'https://thbpkpynvoueniovmdop.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoYnBrcHludm91ZW5pb3ZtZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MTI5MTAsImV4cCI6MjA4NzA4ODkxMH0.tIzHk1eWEd7NrF21jdP6FiwgwEp3EjGikcHC1xs9Lak';
-
-export class BurnRateTracker {
-  constructor(config) {
-    // FIX: Extract UUID from br_live_UUID_TIMESTAMP_HASH format correctly
-    const match = (config.apiKey || '').match(/br_live_([a-f0-9-]{36})/i);
-    this.userId = match ? match[1] : '';
-    this.budget = config.monthlyBudget || 200;
-    this.queue  = [];
-    this.timer  = setInterval(() => this.flush(), 5000);
-    if (!this.userId) console.warn('[BurnRate] Invalid API key. Get yours at https://burn-rate-zeta.vercel.app');
-  }
-  cost(model, input, output) {
-    const p = {'gpt-4o':[0.005,0.015],'gpt-4o-mini':[0.00015,0.0006],'gpt-4':[0.03,0.06],'gpt-3.5-turbo':[0.0005,0.0015],'claude-3-5-sonnet-20241022':[0.003,0.015],'claude-3-haiku':[0.00025,0.00125],'claude-3-opus':[0.015,0.075],'claude-opus-4':[0.015,0.075],'gemini-2.0-flash':[0.0001,0.0004],'gemini-1.5-pro':[0.00125,0.005],'gemini-1.5-flash':[0.000075,0.0003],'llama-3.3-70b-versatile':[0.00059,0.00079],'llama-3.1-8b-instant':[0.00005,0.00008],'mixtral-8x7b-32768':[0.00024,0.00024],'meta/llama-3.3-70b-instruct':[0.00077,0.00077]};
-    const [i, o] = p[model] || [0.001, 0.001];
-    return ((input * i) + (output * o)) / 1000;
-  }
-  async track(provider, model, fn, feature) {
-    const t = Date.now();
-    try {
-      const res = await fn();
-      let inp = 0, out = 0;
-      if (res?.usage) { inp = res.usage.prompt_tokens || res.usage.input_tokens || 0; out = res.usage.completion_tokens || res.usage.output_tokens || 0; }
-      else if (res?.usageMetadata) { inp = res.usageMetadata.promptTokenCount || 0; out = res.usageMetadata.candidatesTokenCount || 0; }
-      this.queue.push({ user_id: this.userId, provider, model, tokens_input: inp, tokens_output: out, cost: this.cost(model, inp, out), timestamp: new Date().toISOString(), feature: feature || null, metadata: { latency_ms: Date.now() - t, status: 'success' } });
-      void this.flush(); return res;
-    } catch (err) {
-      this.queue.push({ user_id: this.userId, provider, model, tokens_input: 0, tokens_output: 0, cost: 0, timestamp: new Date().toISOString(), feature: feature || null, metadata: { error: err.message, latency_ms: Date.now() - t, status: 'error' } });
-      void this.flush(); throw err;
-    }
-  }
-  trackGroq(model, fn, feature)      { return this.track('groq',      model, fn, feature); }
-  trackOpenAI(model, fn, feature)    { return this.track('openai',    model, fn, feature); }
-  trackGoogle(model, fn, feature)    { return this.track('google',    model, fn, feature); }
-  trackAnthropic(model, fn, feature) { return this.track('anthropic', model, fn, feature); }
-  trackNvidia(model, fn, feature)    { return this.track('nvidia',    model, fn, feature); }
-  async flush() {
-    if (!this.queue.length) return;
-    const batch = [...this.queue]; this.queue = [];
-    try {
-      const r = await fetch(SUPABASE_URL + '/functions/v1/track-usage', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_KEY }, body: JSON.stringify({ metrics: batch }) });
-      if (!r.ok) this.queue.unshift(...batch);
-    } catch { this.queue.unshift(...batch); }
-  }
-  async stop() { clearInterval(this.timer); await this.flush(); }
-}
-`;
 
 function writeEnv(cwd, apiKey) {
   const envPath = path.join(cwd, '.env.local');
@@ -294,54 +251,24 @@ function findLibDir(cwd) {
 
 function rel(cwd, full) { return path.relative(cwd, full); }
 
-async function downloadSdk(sdkPath) {
-  return new Promise((resolve) => {
-    const req = https.get('https://burn-rate-zeta.vercel.app/sdk', res => {
-      if (res.statusCode !== 200) { fs.writeFileSync(sdkPath, SDK_CONTENT); resolve('bundled'); return; }
-      let d = '';
-      res.on('data', c => d += c);
-      res.on('end', () => {
-        if (d.includes('BurnRateTracker') && d.includes('class BurnRateTracker')) { fs.writeFileSync(sdkPath, d); resolve('downloaded'); }
-        else { fs.writeFileSync(sdkPath, SDK_CONTENT); resolve('bundled'); }
-      });
-    });
-    req.on('error', () => { fs.writeFileSync(sdkPath, SDK_CONTENT); resolve('bundled'); });
-    req.setTimeout(6000, () => { req.destroy(); fs.writeFileSync(sdkPath, SDK_CONTENT); resolve('bundled'); });
-  });
-}
-
 async function main() {
   const cwd = process.cwd();
-  console.log('\n' + bold(cyan('⚡ BurnRate Init')) + gray(' v2.0.6'));
-  console.log(gray('Zero-friction AI API tracking — auto-patches your codebase') + '\n');
-  console.log(white('Get your free API key at: ') + cyan('https://burn-rate-zeta.vercel.app') + '\n');
+  console.log('\n' + bold(cyan('⚡ BurnRate Init')) + gray(' v2.1.3'));
+  console.log(gray('Universal AI API tracking') + '\n');
+  console.log(white('Get API key: ') + cyan('https://burn-rate-zeta.vercel.app') + '\n');
 
-  let apiKey = await ask(white('? Paste your BurnRate API key: '));
+  let apiKey = await ask(white('? Paste BurnRate API key: '));
   while (!apiKey || !apiKey.startsWith('br_live_')) {
-    console.log(red('  Key must start with br_live_ — copy it from your dashboard'));
-    apiKey = await ask(white('? Paste your BurnRate API key: '));
+    console.log(red('  Key must start with br_live_'));
+    apiKey = await ask(white('? Paste BurnRate API key: '));
   }
 
-  const scanSpin = spinner('Scanning codebase for AI API calls...');
+  const scanSpin = spinner('Scanning for AI calls...');
   const matches = walkDir(cwd);
   scanSpin.stop();
 
   if (!matches.length) {
-    console.log(yellow('\n⚠  No untracked AI calls found.'));
-    console.log(gray('   Scanned for: Groq, OpenAI, Google Gemini, Anthropic'));
-    console.log(gray('   Make sure you are running this from your project root.\n'));
-    
-    // Even if no new files to patch, update SDK to v2.0.6 if it exists
-    const sdkDir = findLibDir(cwd);
-    const sdkPath = path.join(sdkDir, 'burnrate-sdk.ts');
-    if (fs.existsSync(sdkPath)) {
-      const existingSdk = fs.readFileSync(sdkPath, 'utf-8');
-      if (existingSdk.includes('without.length >= 36')) {
-        console.log(yellow('   Detected old SDK with UUID bug. Updating to v2.0.6...'));
-        fs.writeFileSync(sdkPath, SDK_CONTENT);
-        console.log(green('   ✓ SDK updated with correct UUID extraction\n'));
-      }
-    }
+    console.log(yellow('\n⚠  No untracked AI calls found.\n'));
     process.exit(0);
   }
 
@@ -350,69 +277,124 @@ async function main() {
 
   const counts = {};
   for (const m of matches) counts[m.provider] = (counts[m.provider] || 0) + 1;
-  console.log(green(`\n✓ Found ${matches.length} AI call${matches.length !== 1 ? 's' : ''} across ${byFile.size} file${byFile.size !== 1 ? 's' : ''}:\n`));
-
-  const icons = { groq: '🟠', openai: '🟢', google: '🔵', anthropic: '🟣' };
-  for (const [p, n] of Object.entries(counts)) console.log(`  ${icons[p] || '⚪'}  ${white(p.padEnd(12))} ${gray(n + ' call' + (n !== 1 ? 's' : ''))}`);
+  console.log(green(`\n✓ Found ${matches.length} AI calls:\n`));
+  
+  const icons = { groq: '🟠', openai: '🟢', google: '🔵', anthropic: '🟣', openrouter: '🔴', together: '🟡', replicate: '⚪', vercel_ai: '⚫', generic: '💿' };
+  for (const [p, n] of Object.entries(counts)) {
+    console.log(`  ${icons[p] || '⚪'}  ${white(p.padEnd(15))} ${gray(n + ' calls')}`);
+  }
+  
   console.log('');
   for (const [file, ms] of byFile) {
     console.log(`  ${cyan(rel(cwd, file))}`);
-    for (const m of ms) console.log(`    ${gray('line ' + m.line + ':')} ${gray(m.originalLine.trim().slice(0, 65))}`);
+    for (const m of ms) console.log(`    ${gray('L' + m.line + ':')} ${m.originalLine.trim().slice(0, 55)}`);
   }
 
-  const ok = await confirm(`\n${white('Patch all ' + matches.length + ' call' + (matches.length !== 1 ? 's' : '') + ' with BurnRate tracking?')}`);
-  if (!ok) { console.log(gray('\nNo changes made.\n')); process.exit(0); }
+  const ok = await confirm(`\n${white('Patch ' + matches.length + ' calls?')}`);
+  if (!ok) { console.log(gray('\nCancelled.\n')); process.exit(0); }
 
-  const featureMap = await collectFeatureTags(byFile, cwd);
+  const featureMap = new Map();
+  console.log('\n' + bold(magenta('🏷  Feature Tags')) + '\n');
+  for (const [filePath, fileMatches] of byFile) {
+    const suggested = fileMatches[0].suggestedFeature;
+    const relPath = path.relative(cwd, filePath);
+    process.stdout.write(`  ${cyan(relPath)} ${gray('[' + suggested + ']')}: `);
+    const input = await ask('');
+    const tag = input.trim().replace(/[^a-z0-9-_]/gi, '-').toLowerCase() || suggested;
+    featureMap.set(filePath, tag);
+    console.log(`  ${green('✓')} ${magenta(tag)}\n`);
+  }
 
-  const sdkDir  = findLibDir(cwd);
+  const sdkDir = findLibDir(cwd);
   const sdkPath = path.join(sdkDir, 'burnrate-sdk.ts');
-  const sdkSpin = spinner('Writing burnrate-sdk.ts...');
   
-  // Always write v2.0.6 SDK with correct UUID extraction
-  fs.writeFileSync(sdkPath, SDK_CONTENT);
-  sdkSpin.succeed(green('SDK v2.0.6 ready') + gray(` → ${rel(cwd, sdkPath)} (UUID bug fixed)`));
+  // Write SDK inline to avoid template literal issues
+  const sdkContent = `// BurnRate SDK v2.1.3
+const SUPABASE_URL = 'https://thbpkpynvoueniovmdop.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRoYnBrcHludm91ZW5pb3ZtZG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1MTI5MTAsImV4cCI6MjA4NzA4ODkxMH0.tIzHk1eWEd7NrF21jdP6FiwgwEp3EjGikcHC1xs9Lak';
+
+export class BurnRateTracker {
+  userId: string; budget: number; queue: any[]; timer: any;
+  constructor(config: { apiKey: string; monthlyBudget?: number }) {
+    const match = (config.apiKey || '').match(/br_live_([a-f0-9-]{36})/i);
+    this.userId = match ? match[1] : '';
+    this.budget = config.monthlyBudget || 200;
+    this.queue = []; this.timer = setInterval(() => this.flush(), 5000);
+    if (!this.userId) console.warn('[BurnRate] Invalid API key');
+  }
+  cost(model: string, input: number, output: number): number {
+    const prices: Record<string, [number, number]> = {
+      'gpt-4o': [0.005, 0.015], 'gpt-4o-mini': [0.00015, 0.0006], 'gpt-4': [0.03, 0.06], 'gpt-3.5-turbo': [0.0005, 0.0015],
+      'claude-3-5-sonnet-20241022': [0.003, 0.015], 'claude-3-haiku': [0.00025, 0.00125], 'claude-3-opus': [0.015, 0.075],
+      'gemini-2.0-flash': [0.0001, 0.0004], 'gemini-1.5-pro': [0.00125, 0.005], 'gemini-1.5-flash': [0.000075, 0.0003],
+      'llama-3.3-70b-versatile': [0.00059, 0.00079], 'llama-3.1-8b-instant': [0.00005, 0.00008],
+      'googleai/gemini-1.5-flash': [0.000075, 0.0003], 'openai/gpt-4o': [0.005, 0.015], 'anthropic/claude-3.5-sonnet': [0.003, 0.015],
+    };
+    const [i, o] = prices[model] || [0.001, 0.001];
+    return ((input * i) + (output * o)) / 1000;
+  }
+  async track(provider: string, model: string, fn: () => any, feature?: string): Promise<any> {
+    const t = Date.now();
+    try {
+      const res = await fn();
+      let inp = 0, out = 0;
+      if (res?.usage) { inp = res.usage.prompt_tokens || 0; out = res.usage.completion_tokens || 0; }
+      else if (res?.usageMetadata) { inp = res.usageMetadata.promptTokenCount || 0; out = res.usageMetadata.candidatesTokenCount || 0; }
+      this.queue.push({ user_id: this.userId, provider, model, tokens_input: inp, tokens_output: out, cost: this.cost(model, inp, out), timestamp: new Date().toISOString(), feature: feature || null, metadata: { latency_ms: Date.now() - t, status: 'success' } });
+      void this.flush(); return res;
+    } catch (err: any) {
+      this.queue.push({ user_id: this.userId, provider, model, tokens_input: 0, tokens_output: 0, cost: 0, timestamp: new Date().toISOString(), feature: feature || null, metadata: { error: err.message, latency_ms: Date.now() - t, status: 'error' } });
+      void this.flush(); throw err;
+    }
+  }
+  trackGroq(model: string, fn: () => any, feature?: string) { return this.track('groq', model, fn, feature); }
+  trackOpenAI(model: string, fn: () => any, feature?: string) { return this.track('openai', model, fn, feature); }
+  trackGoogle(model: string, fn: () => any, feature?: string) { return this.track('google', model, fn, feature); }
+  trackAnthropic(model: string, fn: () => any, feature?: string) { return this.track('anthropic', model, fn, feature); }
+  trackOpenRouter(model: string, fn: () => any, feature?: string) { return this.track('openrouter', model, fn, feature); }
+  trackTogether(model: string, fn: () => any, feature?: string) { return this.track('together', model, fn, feature); }
+  trackReplicate(model: string, fn: () => any, feature?: string) { return this.track('replicate', model, fn, feature); }
+  trackVercelAI(model: string, fn: () => any, feature?: string) { return this.track('vercel-ai', model, fn, feature); }
+  trackNvidia(model: string, fn: () => any, feature?: string) { return this.track('nvidia', model, fn, feature); }
+  trackGeneric(model: string, fn: () => any, feature?: string) { return this.track('generic', model, fn, feature); }
+  async flush(): Promise<void> {
+    if (!this.queue.length) return;
+    const batch = [...this.queue]; this.queue = [];
+    try {
+      const r = await fetch(SUPABASE_URL + '/functions/v1/track-usage', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + SUPABASE_KEY }, body: JSON.stringify({ metrics: batch }) });
+      if (!r.ok) this.queue.unshift(...batch);
+    } catch { this.queue.unshift(...batch); }
+  }
+  async stop(): Promise<void> { clearInterval(this.timer); await this.flush(); }
+}
+`;
+  
+  fs.writeFileSync(sdkPath, sdkContent);
+  console.log(green('✓ SDK v2.1.3 ready'));
 
   writeEnv(cwd, apiKey);
-  console.log(green('✓ BURNRATE_API_KEY') + gray(' added to .env.local'));
+  console.log(green('✓ API key added'));
 
-  const patchSpin = spinner('Patching API calls with feature tags...');
+  const patchSpin = spinner('Patching...');
   const results = [];
   for (const [filePath, fileMatches] of byFile) {
-    const featureTag = featureMap.get(filePath) || inferFeatureFromPath(filePath);
-    results.push(patchFile(filePath, fileMatches, apiKey, featureTag));
+    results.push(patchFile(filePath, fileMatches, apiKey, featureMap.get(filePath)));
   }
   patchSpin.stop();
 
-  const good  = results.filter(r => r.success);
-  const bad   = results.filter(r => !r.success);
+  const good = results.filter(r => r.success);
   const total = good.reduce((s, r) => s + r.count, 0);
+  console.log(green(`\n✓ Patched ${total} calls in ${good.length} files`));
 
-  console.log('');
-  for (const r of good) console.log(green('✓ Patched') + gray(` ${rel(cwd, r.file)} (${r.count} call${r.count !== 1 ? 's' : ''})`) + ` ${magenta('→ ' + r.feature)}`);
-  for (const r of bad)  console.log(red('✗ Failed')  + gray(` ${rel(cwd, r.file)}: ${r.error}`));
-
-  const checkSpin = spinner('Validating TypeScript...');
   const check = runTypeCheck(cwd);
   if (!check.ok) {
-    checkSpin.fail(red('TypeScript errors in patched files — rolling back'));
+    console.log(red('\n✗ TypeScript errors, rolling back...'));
     rollbackAll(byFile);
     process.exit(1);
   }
-  checkSpin.succeed(green('TypeScript check passed — your build is safe'));
 
-  console.log('\n' + gray('─'.repeat(50)));
-  console.log(bold(green(`\n🚀 Done! ${total} call${total !== 1 ? 's' : ''} now tracked with feature tags.\n`)));
-  if (good.length > 0) {
-    const ex = good[0];
-    console.log(gray('  Before: await groq.chat.completions.create({ ... })'));
-    console.log(white(`  After:  await __burnrateTracker.trackGroq('model', () => groq.chat.completions.create({ ... }), '${ex.feature}')\n`));
-  }
-  console.log(white('Next steps:'));
-  console.log(gray('  1. Run your app and trigger any AI call'));
-  console.log(gray('  2. Watch costs at ') + cyan('https://burn-rate-zeta.vercel.app'));
-  console.log(gray('  3. Backups saved as .burnrate-backup — delete when happy'));
-  console.log(gray('  4. To undo: ') + white('git checkout -- .') + '\n');
+  console.log(bold(green('\n🚀 Done!\n')));
+  console.log(gray('Next: run app, trigger AI, check dashboard'));
 }
 
 main().catch(err => { console.error(red('\n✗ ' + err.message)); process.exit(1); });

@@ -42,6 +42,7 @@ serve(async (req) => {
         tokens_output: entry.tokens_output || 0,
         cost: entry.cost || 0,
         timestamp: entry.timestamp || new Date().toISOString(),
+        feature: entry.feature || null,
       };
 
       // Only add metadata if present (some schemas don't have this column)

@@ -12,7 +12,7 @@ interface AlertBannerProps {
 export const AlertBanner: React.FC<AlertBannerProps> = ({ percentage }) => {
   const [dismissed, setDismissed] = useState(false);
 
-  if (dismissed || percentage < 80) return null;
+  if (dismissed || percentage < 80) return (<div style={{display:"none"}}></div>);
 
   const isCritical = percentage >= 95;
   const isHigh = percentage >= 90;
