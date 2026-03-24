@@ -70,14 +70,19 @@ Multi-user access, Slack alerts, and white-label reports for teams.
 
 ## Screenshots
 
+### Hero Section - Problem Statement
+![Burn Rate Hero](./burn_rate_hero_actual.jpg)
+
+This screenshot shows the core problem Burn Rate solves: developers face surprise bills, leaked keys, and zero visibility into AI API spending.
+
 ### Dashboard
-Real-time overview of API spending with budget usage gauge and hourly breakdown.
+*[Screenshot placeholder: Real-time overview of API spending with budget usage gauge and hourly breakdown]*
 
 ### Cost Breakdown
-Detailed analysis by provider, model, and feature with trend visualization.
+*[Screenshot placeholder: Detailed analysis by provider, model, and feature with trend visualization]*
 
 ### Alert Settings
-Configure budget thresholds, anomaly detection, and notification channels.
+*[Screenshot placeholder: Configure budget thresholds, anomaly detection, and notification channels]*
 
 ---
 
