@@ -13,7 +13,7 @@ import { AlertBanner } from '@/components/dashboard/AlertBanner';
 import { FeatureCostBreakdown } from '@/components/dashboard/FeatureCostBreakdown';
 import { ModelComparisonCard } from '@/components/dashboard/ModelComparisonCard';
 import { DailySpendChart } from '@/components/dashboard/DailySpendChart';
-import { 
+import {
   Zap, Flame, Calendar, Cpu, ShieldAlert, AlertTriangle, Loader2, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,6 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { APIKey, UsageLog } from '@/types/supabase';
 
-// Inline styles object
 const styles: Record<string, React.CSSProperties> = {
   container: {
     minHeight: '100vh',
@@ -123,12 +122,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     animation: 'pulse 2s infinite',
   },
-  testBadge: {
-    fontSize: '10px',
-    padding: '4px 8px',
-    background: 'rgba(255,255,255,0.1)',
-    borderRadius: '4px',
-  },
   refreshBtn: {
     padding: '6px 12px',
     border: '1px solid rgba(255,255,255,0.1)',
@@ -154,23 +147,6 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '40px',
-  },
-  heroSection: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(12, 1fr)',
-    gap: '40px',
-    alignItems: 'center',
-  },
-  gaugeCol: {
-    gridColumn: 'span 5',
-    display: 'flex',
-    justifyContent: 'center',
-  },
-  statsCol: {
-    gridColumn: 'span 7',
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '16px',
   },
   gridSection: {
     display: 'grid',
@@ -263,7 +239,7 @@ function BurnRateDashboardInner() {
   const [keyToRevoke, setKeyToRevoke] = useState<APIKey | null>(null);
   const [revoking, setRevoking] = useState<boolean>(false);
   const [mounted, setMounted] = useState<boolean>(false);
-  
+
   const supabase = createClient();
   const monthlyBudget: number = 2000;
 
@@ -280,10 +256,7 @@ function BurnRateDashboardInner() {
 
   useEffect(() => {
     if (!mounted) return;
-    
-    console.log('🔥 FETCHING DATA...');
     fetchData();
-    
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [mounted, userId]);
@@ -291,7 +264,6 @@ function BurnRateDashboardInner() {
   const fetchData = async () => {
     if (!userId) return;
     try {
-      console.log("📡 Calling Supabase...");
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);
@@ -303,11 +275,7 @@ function BurnRateDashboardInner() {
         .gte("timestamp", startOfMonth.toISOString())
         .order("timestamp", { ascending: false });
 
-      if (logsError) {
-        console.error("Logs error:", logsError);
-      } else {
-        console.log("✅ Logs fetched:", logs?.length || 0);
-      }
+      if (logsError) console.error("Logs error:", logsError);
 
       setUsageLogs(logs || []);
       const totalSpent = logs?.reduce((sum: number, log: UsageLog) => sum + (log.cost || 0), 0) || 0;
@@ -319,13 +287,9 @@ function BurnRateDashboardInner() {
         .select("*")
         .eq("user_id", userId)
         .eq("is_active", true);
-      
-      if (keysError) {
-        console.error("Keys error:", keysError);
-      } else {
-        console.log("✅ Keys fetched:", keys?.length || 0);
-      }
-      
+
+      if (keysError) console.error("Keys error:", keysError);
+
       setApiKeys(keys || []);
       detectAnomalies(logs || []);
     } catch (error) {
@@ -375,22 +339,21 @@ function BurnRateDashboardInner() {
     }
 
     const byCost: Record<string, number> = {};
-    dayLogs.forEach((log: UsageLog) => { 
-      byCost[log.provider] = (byCost[log.provider] || 0) + log.cost; 
+    dayLogs.forEach((log: UsageLog) => {
+      byCost[log.provider] = (byCost[log.provider] || 0) + log.cost;
     });
     Object.entries(byCost).forEach(([provider, cost]: [string, number]) => {
       if (dayCost > 0 && (cost / dayCost) > 0.8 && dayCost > 1) {
         alerts.push({
           id: 'provider-dom-' + provider,
           severity: 'warning',
-          message: `⚠️ ${provider} is ${Math.round((cost/dayCost)*100)}% of today's spend ($${cost.toFixed(2)})`,
+          message: `⚠️ ${provider} is ${Math.round((cost / dayCost) * 100)}% of today's spend ($${cost.toFixed(2)})`,
           recommendedAction: 'Check if this provider usage is expected'
         });
       }
     });
 
-    const daysInMonth = 30;
-    const projectedMonthly = (dayCost / 1) * daysInMonth;
+    const projectedMonthly = (dayCost / 1) * 30;
     if (projectedMonthly > monthlyBudget * 0.9 && dayCost > 0.5) {
       alerts.push({
         id: 'budget-projection-' + now.getTime(),
@@ -420,10 +383,7 @@ function BurnRateDashboardInner() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (loading) {
-        console.log('⏱️ FORCE RENDER - timeout reached');
-        setLoading(false);
-      }
+      if (loading) setLoading(false);
     }, 3000);
     return () => clearTimeout(timer);
   }, [loading]);
@@ -442,7 +402,7 @@ function BurnRateDashboardInner() {
       <div style={styles.loadingContainer}>
         <Loader2 size={32} style={{ animation: 'spin 1s linear infinite', color: '#0A84FF' }} />
         <p style={styles.loadingText}>Loading spend data...</p>
-        <button 
+        <button
           style={styles.refreshBtn}
           onClick={() => { setLoading(false); fetchData(); }}
         >
@@ -469,7 +429,7 @@ function BurnRateDashboardInner() {
               <ShieldAlert size={20} />
               <span style={styles.anomalyText}>{alert.message}</span>
             </div>
-            <button 
+            <button
               style={styles.killSwitchBtn}
               onClick={() => setShowKillSwitch(true)}
             >
@@ -496,7 +456,6 @@ function BurnRateDashboardInner() {
               <span style={styles.liveDot}></span>
               LIVE TELEMETRY
             </span>
-            
             <button style={styles.refreshBtn} onClick={() => window.location.reload()}>
               🔄 Refresh
             </button>
@@ -508,34 +467,35 @@ function BurnRateDashboardInner() {
       </header>
 
       <main style={styles.main}>
-        <section style={styles.heroSection}>
-          <div style={styles.gaugeCol}>
+
+        {/* ── HERO SECTION: responsive via className + global CSS ── */}
+        <section className="burn-hero-section">
+          <div className="burn-gauge-col">
             <BurnGauge percentage={percentage} spent={spent} totalBudget={monthlyBudget} />
           </div>
-          
-          <div style={styles.statsCol}>
-            <StatsCard 
+          <div className="burn-stats-col">
+            <StatsCard
               label="Monthly Burn Rate"
               value={`$${monthlyBurnRate.toFixed(2)}/hr`}
               icon={<Flame size={18} />}
               color="text-orange-500"
               trend="stable"
             />
-            <StatsCard 
+            <StatsCard
               label="Total Tokens"
               value={totalTokens.toLocaleString()}
               icon={<Cpu size={18} />}
               color="text-blue-500"
               trend="stable"
             />
-            <StatsCard 
+            <StatsCard
               label="Days Remaining"
               value={Math.floor(daysRemaining).toString()}
               icon={<Calendar size={18} />}
               color="text-green-500"
               trend="stable"
             />
-            <StatsCard 
+            <StatsCard
               label="Active Keys"
               value={apiKeys.length.toString()}
               icon={<Zap size={18} />}
@@ -546,8 +506,8 @@ function BurnRateDashboardInner() {
         </section>
 
         <section style={styles.gridSection}>
-          <KeyVault 
-            apiKeys={apiKeys} 
+          <KeyVault
+            apiKeys={apiKeys}
             onKeysChange={fetchData}
             userId={userId}
             onEmergencyRevoke={(key: APIKey) => {
@@ -558,11 +518,11 @@ function BurnRateDashboardInner() {
           <OptimizationEngine usageLogs={usageLogs} />
         </section>
 
-        {apiKeys.filter((k: APIKey) => ['google','groq','nvidia','deepseek'].includes(k.provider)).length > 0 && (
+        {apiKeys.filter((k: APIKey) => ['google', 'groq', 'nvidia', 'deepseek'].includes(k.provider)).length > 0 && (
           <section style={styles.sdkSection}>
             <p style={styles.sdkTitle}>SDK-Tracked Providers</p>
             {apiKeys
-              .filter((k: APIKey) => ['google','groq','nvidia','deepseek'].includes(k.provider))
+              .filter((k: APIKey) => ['google', 'groq', 'nvidia', 'deepseek'].includes(k.provider))
               .filter((k: APIKey, i: number, arr: APIKey[]) => arr.findIndex((x: APIKey) => x.provider === k.provider) === i)
               .map((k: APIKey) => (
                 <SDKRequiredCard
@@ -575,8 +535,7 @@ function BurnRateDashboardInner() {
               ))}
           </section>
         )}
-        
-        {/*<ApiKeySection userId={userId} />*/}
+
         <section style={styles.tableSection}>
           <MultiProviderTable usageLogs={usageLogs} />
         </section>
@@ -601,13 +560,10 @@ function BurnRateDashboardInner() {
               </div>
             )}
             <div style={styles.dialogActions}>
-              <button 
-                style={styles.cancelBtn}
-                onClick={() => setShowKillSwitch(false)}
-              >
+              <button style={styles.cancelBtn} onClick={() => setShowKillSwitch(false)}>
                 Cancel
               </button>
-              <button 
+              <button
                 style={{
                   ...styles.revokeBtn,
                   opacity: revoking ? 0.5 : 1,
@@ -624,6 +580,44 @@ function BurnRateDashboardInner() {
       </Dialog>
 
       <style jsx global>{`
+        /* ── Hero section layout ── */
+        .burn-hero-section {
+          display: grid;
+          grid-template-columns: repeat(12, 1fr);
+          gap: 40px;
+          align-items: center;
+        }
+        .burn-gauge-col {
+          grid-column: span 5;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          width: 100%;
+        }
+        .burn-stats-col {
+          grid-column: span 7;
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+
+        /* ── Mobile: single column stack ── */
+        @media (max-width: 768px) {
+          .burn-hero-section {
+            grid-template-columns: 1fr;
+            gap: 24px;
+          }
+          .burn-gauge-col {
+            grid-column: span 1;
+            max-width: 240px;
+            margin: 0 auto;
+          }
+          .burn-stats-col {
+            grid-column: span 1;
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
